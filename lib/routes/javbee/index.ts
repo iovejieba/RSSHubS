@@ -115,29 +115,37 @@ async function handler(ctx) {
                 const imageSrc = imageEl.attr('data-src') || imageEl.attr('src') || '';
                 const imageUrl = imageSrc ? new URL(imageSrc, rootUrl).href : '';
 
-                // ========== 精准匹配你提供的 .images-description 结构 ==========
+                // ========== 自动拼接图床直链（核心优化） ==========
                 const screenshots = [];
-                // 定位到 .images-description 容器，遍历所有 li > a.img-items
                 item.find('.images-description ul li a.img-items').each((_, el) => {
                     const $a = $(el);
-                    // 提取a标签内的文本链接，去除多余空格
                     const originalUrl = $a.text().trim().replace(/\s+/g, '');
                     
-                    if (originalUrl.startsWith('http') && (originalUrl.includes('.jpg') || originalUrl.includes('.png'))) {
-                        // 若有预览图规则，可在此处替换生成预览图链接（如你之前提供的结构）
-                        // 示例：将 /upload/en/xxx.jpg 转为预览图路径，若无则直接用原图
-                        let thumbnailUrl = originalUrl;
-                        
-                        // 可选：根据图床规则生成预览图链接（适配你之前的示例）
-                        if (originalUrl.includes('/upload/en/')) {
-                            thumbnailUrl = originalUrl.replace('/upload/en/', '/upload/Application/storage/app/public/uploads/users/aQ2WVGrBGkx7y/');
-                        }
+                    if (originalUrl.startsWith('http') && originalUrl.includes('_s.jpg')) {
+                        try {
+                            // 1. 提取原链接的域名（如：javball.com、fc2ppv.stream）
+                            const urlObj = new URL(originalUrl);
+                            const domain = urlObj.hostname; // 得到域名（不含协议和路径）
+                            
+                            // 2. 提取文件名（如：AKID-124_s.jpg、BTIS-149_s.jpg）
+                            const fileName = originalUrl.split('/').pop(); // 取路径最后一段作为文件名
+                            
+                            // 3. 拼接直链（固定路径结构）
+                            const directThumbnailUrl = `https://${domain}/upload/Application/storage/app/public/uploads/users/aQ2WVGrBGkx7y/${fileName}`;
 
-                        screenshots.push({
-                            originalUrl: originalUrl,
-                            thumbnailUrl: thumbnailUrl,
-                            alt: `截图${screenshots.length + 1}`
-                        });
+                            screenshots.push({
+                                originalUrl: originalUrl, // 原图链接（点击跳转用）
+                                thumbnailUrl: directThumbnailUrl, // 拼接后的直链（内嵌显示用）
+                                alt: `截图${screenshots.length + 1}`
+                            });
+                        } catch (e) {
+                            // 异常时 fallback 到原链接
+                            screenshots.push({
+                                originalUrl: originalUrl,
+                                thumbnailUrl: originalUrl,
+                                alt: `截图${screenshots.length + 1}`
+                            });
+                        }
                     }
                 });
 
