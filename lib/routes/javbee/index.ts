@@ -49,7 +49,7 @@ export const route: Route = {
 };
 
 async function handler(ctx) {
-    const rootUrl = 'https://www.javbee.vip';
+    const rootUrl = 'https://javbee.vip';
     const type = ctx.req.param('type');
     const keyword = ctx.req.param('keyword') ?? '';
 
