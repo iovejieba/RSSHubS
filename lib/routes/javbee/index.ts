@@ -9,42 +9,25 @@ import path from 'node:path';
 export const route: Route = {
     path: '/:type/:keyword{.*}?',
     categories: ['multimedia'],
-    name: '通用',
+    name: 'JavBee 通用订阅',
     maintainers: ['cgkings', 'nczitzk'],
     parameters: { 
-        type: '类型，可查看下表的类型说明', 
-        keyword: '关键词，可查看下表的关键词说明' 
+        type: '类型，可选值：new(最新)、popular(热门)、random(随机)、tag(指定标签)、date(指定日期)', 
+        keyword: '关键词：popular填7/30/60；tag填标签名；date填年月日(2025-11-30)；new/random留空' 
     },
     handler,
-    description: `**类型**
+    description: `### 订阅示例
+- 最新资源：\`/javbee/new\`
+- 30天热门：\`/javbee/popular/30\`
+- 指定标签：\`/javbee/tag/Adult%20Awards\`（标签空格替换为%20）
+- 指定日期：\`/javbee/date/2025-11-30\`
+- 随机资源：\`/javbee/random\`
 
-| 最新 | 热门    | 随机   | 指定标签 | 日期 |
-| ---- | ------- | ------ | -------- | ---- |
-| new  | popular | random | tag      | date |
-
-**关键词**
-
-| 空 | 日期范围    | 标签名         | 年月日     |
-| -- | ----------- | -------------- | ---------- |
-|    | 7 / 30 / 60 | Adult%20Awards | 2025-11-30 |
-
-**示例说明**
-
--  \`/javbee/new\`
-
-      仅当类型为 \`new\` \`popular\` 或 \`random\` 时关键词为 **空**
-
--  \`/javbee/popular/30\`
-
-      \`popular\` 类型的关键词可填写 \`7\` \`30\` 或 \`60\` 三个 **日期范围** 之一，分别对应 **7 天**、**30 天** 或 **60 天内**
-
--  \`/javbee/tag/Adult%20Awards\`
-
-      \`tag\` 类型的关键词必须填写 **标签名** 且标签中的 \`/\` 必须替换为 \`%2F\` ，可在 [此处](https://javbee.vip/tag/) 标签单页链接中获取
-
--  \`/javbee/date/2025-11-30\`
-
-      \`date\` 类型的关键词必须填写 **日期(年-月-日)**`,
+### 功能说明
+1. 自动抓取封面图、文件大小、发布日期、标签；
+2. 支持Torrent下载链接和磁力链接提取；
+3. 影片截图自动适配多图床，提取纯净文件名拼接有效直链；
+4. 异常容错：截图加载失败自动降级，显示占位图。`,
     features: {
         nsfw: true,
     },
@@ -53,39 +36,44 @@ export const route: Route = {
 async function handler(ctx) {
     let currentUrl;
     const rootUrl = 'https://javbee.vip';
-    
+    const timeout = 8000; // 请求超时时间
+
     try {
         const type = ctx.req.param('type');
         const keyword = ctx.req.param('keyword') ?? '';
 
+        // 构造请求URL
         if (type === 'popular' && keyword) {
             currentUrl = `${rootUrl}/${type}?sort_day=${keyword}`;
         } else {
             currentUrl = `${rootUrl}/${type}${keyword ? `/${keyword}` : ''}`;
         }
 
+        // 请求列表页
         const response = await got({
             method: 'get',
             url: currentUrl,
             headers: {
                 'Referer': rootUrl,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
             },
+            timeout,
         });
 
         const $ = load(response.data);
 
+        // 遍历所有资源条目
         const items = $('.card .columns')
             .toArray()
             .map((item) => {
                 item = $(item);
 
-                // 提取基础信息
+                // 1. 提取基础信息
                 const titleEl = item.find('.title.is-4.is-spaced a');
                 const videoId = titleEl.text().trim() || '未知ID';
                 const size = item.find('.title.is-4.is-spaced span.is-size-6').text().trim() || '未知大小';
                 
-                // 提取日期
+                // 2. 提取发布日期
                 let pubDate;
                 const dateLink = item.find('.subtitle a').attr('href');
                 if (dateLink && dateLink.includes('/date/')) {
@@ -95,70 +83,79 @@ async function handler(ctx) {
                     }
                 }
 
-                // 提取描述
-                const descriptionText = videoId || '无描述';
-                
-                // 提取标签
+                // 3. 提取标签
                 const tags = item
                     .find('.tags .tag')
                     .toArray()
                     .map((t) => $(t).text().trim())
                     .filter(tag => tag);
 
-                // 提取下载链接
+                // 4. 提取下载链接
                 const magnet = item.find('a[title="Download Magnet"]').attr('href') || '';
                 const torrentLink = item.find('a[title="Download .torrent"]').attr('href') || '';
                 const itemLink = titleEl.attr('href') ? new URL(titleEl.attr('href'), rootUrl).href : currentUrl;
 
-                // 封面图
+                // 5. 提取封面图（懒加载data-src）
                 const imageEl = item.find('img.image.lazy');
                 const imageSrc = imageEl.attr('data-src') || imageEl.attr('src') || '';
-                const imageUrl = imageSrc ? new URL(imageSrc, rootUrl).href : '';
+                const coverImageUrl = imageSrc ? new URL(imageSrc, rootUrl).href : '';
 
-                // ========== 自动拼接图床直链（核心优化） ==========
+                // 6. 核心优化：正则提取纯净文件名+多图床直链拼接
                 const screenshots = [];
                 item.find('.images-description ul li a.img-items').each((_, el) => {
                     const $a = $(el);
-                    const originalUrl = $a.text().trim().replace(/\s+/g, '');
+                    const originalScreenshotUrl = $a.text().trim().replace(/\s+/g, '');
                     
-                    if (originalUrl.startsWith('http') && originalUrl.includes('_s.jpg')) {
+                    // 验证原始链接有效性
+                    if (originalScreenshotUrl.startsWith('https') && originalScreenshotUrl.endsWith('_s.jpg')) {
                         try {
-                            // 1. 提取原链接的域名（如：javball.com、fc2ppv.stream）
-                            const urlObj = new URL(originalUrl);
-                            const domain = urlObj.hostname; // 得到域名（不含协议和路径）
-                            
-                            // 2. 提取文件名（如：AKID-124_s.jpg、BTIS-149_s.jpg）
-                            const fileName = originalUrl.split('/').pop(); // 取路径最后一段作为文件名
-                            
-                            // 3. 拼接直链（固定路径结构）
-                            const directThumbnailUrl = `https://${domain}/upload/Application/storage/app/public/uploads/users/aQ2WVGrBGkx7y/${fileName}`;
+                            const urlObj = new URL(originalScreenshotUrl);
+                            const imgHostDomain = urlObj.hostname;
+                            const fullFileName = originalScreenshotUrl.split('/').pop(); // 含随机前缀的完整文件名
+
+                            // ========== 正则提取纯净文件名（核心修正） ==========
+                            // 匹配规则：提取 "随机前缀-资源ID_s.jpg" 中的 "资源ID_s.jpg"
+                            // 资源ID特征：含字母、数字、连字符（如 FC2-PPV-4805680、259LUXU-1864）
+                            const pureFileNameMatch = fullFileName.match(/([A-Z0-9-]+_s\.jpg)/i);
+                            const pureFileName = pureFileNameMatch ? pureFileNameMatch[1] : fullFileName; // 匹配失败则用完整文件名
+
+                            // 适配两种图床路径规则
+                            let directPreviewUrl;
+                            if (originalScreenshotUrl.includes('/upload/en/')) {
+                                // 规则1：含/en/路径的图床（fc2ppv.stream、555fap.com等）
+                                directPreviewUrl = `https://${imgHostDomain}/upload/Application/storage/app/public/uploads/users/aQ2WVGrBGkx7y/${pureFileName}`;
+                            } else {
+                                // 规则2：不含/en/路径的图床（kin8-jav.com、ai18.pics等）
+                                directPreviewUrl = `https://${imgHostDomain}/upload/Application/storage/app/public/uploads/users/aQ2WVGrBGkx7y/${pureFileName}`;
+                            }
 
                             screenshots.push({
-                                originalUrl: originalUrl, // 原图链接（点击跳转用）
-                                thumbnailUrl: directThumbnailUrl, // 拼接后的直链（内嵌显示用）
-                                alt: `截图${screenshots.length + 1}`
+                                originalUrl: originalScreenshotUrl, // 原始链接（最终降级）
+                                directUrl: directPreviewUrl,       // 拼接后的有效直链
+                                alt: `截图${screenshots.length + 1}`,
+                                pureFileName: pureFileName // 调试用（可选删除）
                             });
-                        } catch (e) {
-                            // 异常时 fallback 到原链接
+                        } catch (error) {
+                            // 异常降级：直接使用原始链接
                             screenshots.push({
-                                originalUrl: originalUrl,
-                                thumbnailUrl: originalUrl,
+                                originalUrl: originalScreenshotUrl,
+                                directUrl: originalScreenshotUrl,
                                 alt: `截图${screenshots.length + 1}`
                             });
                         }
                     }
                 });
 
+                // 7. 构造返回数据
                 return {
                     title: `${videoId} ${size}`,
                     pubDate: parseDate(pubDate, 'YYYY-MM-DD'),
                     link: itemLink,
                     description: art(path.join(__dirname, 'templates/description.art'), {
-                        image: imageUrl,
-                        id: videoId,
+                        coverImage: coverImageUrl,
+                        videoId,
                         size,
                         pubDate: pubDate || '未知日期',
-                        description: descriptionText,
                         tags,
                         magnet,
                         torrentLink,
@@ -170,9 +167,10 @@ async function handler(ctx) {
                 };
             });
 
+        // 生成Feed标题
         const pageTitle = $('title').text().trim();
-        const titlePrefix = pageTitle.split('-')[0]?.trim() || type;
-        const feedTitle = `JavBee - ${titlePrefix}`;
+        const feedTitlePrefix = pageTitle.split('-')[0]?.trim() || type;
+        const feedTitle = `JavBee - ${feedTitlePrefix} 资源订阅`;
 
         return {
             title: feedTitle,
@@ -183,9 +181,9 @@ async function handler(ctx) {
     } catch (error) {
         ctx.status = 500;
         return {
-            title: 'JavBee - 抓取失败',
+            title: 'JavBee 订阅抓取失败',
             link: currentUrl || rootUrl,
-            description: `抓取错误：${error.message}`,
+            description: `错误原因：${error.message}（若频繁失败，可能是站点反爬限制）`,
             item: [],
         };
     }
