@@ -1,5 +1,4 @@
 import { Route } from '@/types';
-
 import { getSubPath } from '@/utils/common-utils';
 import got from '@/utils/got';
 import { load } from 'cheerio';
@@ -12,7 +11,10 @@ export const route: Route = {
     categories: ['multimedia'],
     name: '通用',
     maintainers: ['cgkings', 'nczitzk'],
-    parameters: { type: '类型，可查看下表的类型说明', keyword: '关键词，可查看下表的关键词说明' },
+    parameters: { 
+        type: '类型，可查看下表的类型说明', 
+        keyword: '关键词，可查看下表的关键词说明' 
+    },
     handler,
     description: `**类型**
 
@@ -49,82 +51,110 @@ export const route: Route = {
 };
 
 async function handler(ctx) {
-    const rootUrl = 'https://javbee.vip';
-    const type = ctx.req.param('type');
-    const keyword = ctx.req.param('keyword') ?? '';
-
-    // 处理 popular 类型的特殊 URL 格式
     let currentUrl;
-    if (type === 'popular' && keyword) {
-        currentUrl = `${rootUrl}/${type}?sort_day=${keyword}`;
-    } else {
-        currentUrl = `${rootUrl}/${type}${keyword ? `/${keyword}` : ''}`;
-    }
+    const rootUrl = 'https://javbee.vip';
+    
+    try {
+        const type = ctx.req.param('type');
+        const keyword = ctx.req.param('keyword') ?? '';
 
-    const response = await got({
-        method: 'get',
-        url: currentUrl,
-    });
+        if (type === 'popular' && keyword) {
+            currentUrl = `${rootUrl}/${type}?sort_day=${keyword}`;
+        } else {
+            currentUrl = `${rootUrl}/${type}${keyword ? `/${keyword}` : ''}`;
+        }
 
-    const $ = load(response.data);
-
-    if (getSubPath(ctx) === '/') {
-        ctx.set('redirect', `/javbee${$('.overview').first().attr('href')}`);
-        return;
-    }
-
-    const items = $('.columns')
-        .toArray()
-        .map((item) => {
-            item = $(item);
-
-            const id = item.find('.title a').text();
-            const size = item.find('.title span').text();
-            
-            // 尝试从多个位置获取日期
-            let pubDate;
-            const dateLink = item.find('.subtitle a').attr('href');
-            if (dateLink && dateLink.includes('/date/')) {
-                pubDate = dateLink.split('/date/').pop();
-            }
-            
-            // 如果没有找到日期，设置为当前日期或null
-            if (!pubDate) {
-                pubDate = new Date().toISOString().split('T')[0]; // 使用当前日期作为默认值
-            }
-
-            const description = item.find('.has-text-grey-dark').text();
-            const tags = item
-                .find('.tag')
-                .toArray()
-                .map((t) => $(t).text().trim());
-            const magnet = item.find('a[title="Magnet torrent"]').attr('href');
-            const link = item.find('a[title="Download .torrent"]').attr('href');
-            const image = item.find('.image').attr('src');
-
-            return {
-                title: `${id} ${size}`,
-                pubDate: parseDate(pubDate, 'YYYY-MM-DD'), // 修改日期格式
-                link: new URL(item.find('a').first().attr('href'), rootUrl).href,
-                description: art(path.join(__dirname, 'templates/description.art'), {
-                    image,
-                    id,
-                    size,
-                    pubDate,
-                    description,
-                    tags,
-                    magnet,
-                    link,
-                }),
-                category: tags,
-                enclosure_type: 'application/x-bittorrent',
-                enclosure_url: magnet,
-            };
+        const response = await got({
+            method: 'get',
+            url: currentUrl,
+            headers: {
+                'Referer': rootUrl,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            },
         });
 
-    return {
-        title: `JavBee - ${$('title').text().split('-')[0].trim()}`,
-        link: currentUrl,
-        item: items,
-    };
+        const $ = load(response.data);
+
+        const items = $('.card .columns')
+            .toArray()
+            .map((item) => {
+                item = $(item);
+
+                const videoId = item.find('.title a').text().trim();
+                const size = item.find('.title span').text().trim();
+                
+                let pubDate;
+                const dateLink = item.find('.subtitle a').attr('href');
+                if (dateLink && dateLink.includes('/date/')) {
+                    const extractedDate = dateLink.split('/date/').pop();
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(extractedDate)) {
+                        pubDate = extractedDate;
+                    }
+                }
+
+                const descriptionText = item.find('.has-text-grey-dark').text().trim();
+                const tags = item
+                    .find('.tag')
+                    .toArray()
+                    .map((t) => $(t).text().trim())
+                    .filter(tag => tag);
+
+                const magnet = item.find('a[title="Magnet torrent"]').attr('href');
+                const torrentLink = item.find('a[title="Download .torrent"]').attr('href');
+                const itemLink = new URL(item.find('a').first().attr('href'), rootUrl).href;
+
+                // 提取封面图
+                const imageEl = item.find('img.image.lazy');
+                const imageSrc = imageEl.attr('data-src') || imageEl.attr('src');
+                const imageUrl = imageSrc ? new URL(imageSrc, rootUrl).href : '';
+
+                // 提取影片截图链接（Show Screenshot内的地址）
+                const screenshots = item.find('.images-description .img-items')
+                    .toArray()
+                    .map((img) => $(img).text().trim()) // 截图原始链接
+                    .filter(url => url); // 过滤空链接
+
+                // 处理截图链接（可选：若需直接获取实际图片地址，可发起请求，但可能有反爬限制）
+                // 此处先提取原始链接，模板中可直接显示或跳转
+
+                return {
+                    title: `${videoId} ${size}`,
+                    pubDate: parseDate(pubDate, 'YYYY-MM-DD'),
+                    link: itemLink,
+                    description: art(path.join(__dirname, 'templates/description.art'), {
+                        image: imageUrl,
+                        id: videoId,
+                        size,
+                        pubDate: pubDate || '未知日期',
+                        description: descriptionText,
+                        tags,
+                        magnet,
+                        link: torrentLink,
+                        screenshots: screenshots, // 传递截图链接到模板
+                    }),
+                    category: tags.length > 0 ? tags : [type],
+                    enclosure_type: 'application/x-bittorrent',
+                    enclosure_url: torrentLink,
+                };
+            });
+
+        const pageTitle = $('title').text().trim();
+        const titlePrefix = pageTitle.split('-')[0]?.trim() || type;
+        const feedTitle = `JavBee - ${titlePrefix}`;
+
+        return {
+            title: feedTitle,
+            link: currentUrl,
+            item: items,
+        };
+
+    } catch (error) {
+        ctx.status = 500;
+        return {
+            title: 'JavBee - 抓取失败',
+            link: currentUrl || rootUrl,
+            description: `抓取错误：${error.message}`,
+            item: [],
+        };
+    }
 }
