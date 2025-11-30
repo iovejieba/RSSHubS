@@ -1,70 +1,74 @@
 {{ if image }}
 <img src="{{ image }}" style="max-width: 100%; border-radius: 4px; margin-bottom: 10px;">
 {{ /if }}
+
 <table style="width: 100%; border-collapse: collapse; border: 1px solid #eee; margin-bottom: 15px;">
   <tbody>
     <tr>
-      <th style="padding: 8px; text-align: left; background: #f5f5f5; border: 1px solid #eee;">ID</th>
+      <th style="padding: 8px; text-align: left; background: #f5f5f5; border: 1px solid #eee;">ID/标题</th>
       <td style="padding: 8px; border: 1px solid #eee;">{{ id }}</td>
     </tr>
     <tr>
-      <th style="padding: 8px; text-align: left; background: #f5f5f5; border: 1px solid #eee;">Size</th>
+      <th style="padding: 8px; text-align: left; background: #f5f5f5; border: 1px solid #eee;">文件大小</th>
       <td style="padding: 8px; border: 1px solid #eee;">{{ size }}</td>
     </tr>
     <tr>
-      <th style="padding: 8px; text-align: left; background: #f5f5f5; border: 1px solid #eee;">Date</th>
+      <th style="padding: 8px; text-align: left; background: #f5f5f5; border: 1px solid #eee;">发布日期</th>
       <td style="padding: 8px; border: 1px solid #eee;">{{ pubDate }}</td>
     </tr>
     <tr>
-      <th style="padding: 8px; text-align: left; background: #f5f5f5; border: 1px solid #eee;">Description</th>
-      <td style="padding: 8px; border: 1px solid #eee;">{{ description }}</td>
-    </tr>
-    <tr>
-      <th style="padding: 8px; text-align: left; background: #f5f5f5; border: 1px solid #eee;">Tag</th>
+      <th style="padding: 8px; text-align: left; background: #f5f5f5; border: 1px solid #eee;">标签</th>
       <td style="padding: 8px; border: 1px solid #eee;">
-        {{ each tags tag }}
-          <a href="/tag/{{ tag }}" style="margin-right: 5px; color: #007bff;">{{ tag }}</a>
-        {{ /each }}
-        {{ if tags.length === 0 }}无标签{{ /if }}
-      </td>
-    </tr>
-    <tr>
-      <th style="padding: 8px; text-align: left; background: #f5f5f5; border: 1px solid #eee;">Magnet torrent</th>
-      <td style="padding: 8px; border: 1px solid #eee;">
-        {{ if magnet }}
-          <a href="{{ magnet }}" style="color: #dc3545;">Magnet torrent link</a>
+        {{ if tags.length > 0 }}
+          {{ each tags tag }}
+            <span style="background: #e9ecef; padding: 2px 6px; border-radius: 3px; margin-right: 4px;">{{ tag }}</span>
+          {{ /each }}
         {{ else }}
-          无磁力链接
+          无标签
         {{ /if }}
       </td>
     </tr>
     <tr>
-      <th style="padding: 8px; text-align: left; background: #f5f5f5; border: 1px solid #eee;">Download .torrent</th>
+      <th style="padding: 8px; text-align: left; background: #f5f5f5; border: 1px solid #eee;">Torrent下载</th>
       <td style="padding: 8px; border: 1px solid #eee;">
-        {{ if link }}
-          <a href="{{ link }}" style="color: #28a745;">Download torrent</a>
+        {{ if torrentLink }}
+          <a href="{{ torrentLink }}" style="color: #28a745; text-decoration: none;" target="_blank">
+            <i class="fa fa-download"></i> 点击下载.torrent
+          </a>
         {{ else }}
-          无种子链接
+          无Torrent链接
+        {{ /if }}
+      </td>
+    </tr>
+    <tr>
+      <th style="padding: 8px; text-align: left; background: #f5f5f5; border: 1px solid #eee;">磁力链接</th>
+      <td style="padding: 8px; border: 1px solid #eee;">
+        {{ if magnet }}
+          <a href="{{ magnet }}" style="color: #dc3545; text-decoration: none;" target="_blank">
+            <i class="fa fa-magnet"></i> 点击复制磁力链接
+          </a>
+          <div style="margin-top: 5px; font-size: 12px; color: #666; word-break: break-all;">{{ magnet }}</div>
+        {{ else }}
+          无磁力链接
         {{ /if }}
       </td>
     </tr>
   </tbody>
 </table>
 
-{{ if screenshots && screenshots.length > 0 }}
-<div style="margin-top: 15px;">
-  <h4 style="margin-bottom: 10px; color: #333;">影片截图：</h4>
-  <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-    {{ each screenshots screenshot }}
-      <div style="flex: 1 1 200px;">
-        <!-- 直接显示截图（部分截图链接可直接预览，若不可则显示链接） -->
-        <img src="{{ screenshot }}" alt="截图" style="width: 100%; border-radius: 4px; cursor: pointer;" 
-             onclick="window.open('{{ screenshot }}', '_blank');">
-        <a href="{{ screenshot }}" target="_blank" style="font-size: 12px; color: #666; display: block; margin-top: 5px;">查看原图</a>
-      </div>
+{{ if screenshots.length > 0 }}
+<div style="margin-top: 20px;">
+  <h4 style="margin-bottom: 10px; font-size: 16px; color: #333;">影片截图：</h4>
+  <div style="display: flex; flex-direction: column; gap: 8px;">
+    {{ each screenshots screenshot idx }}
+      <a href="{{ screenshot }}" target="_blank" style="padding: 8px 12px; background: #f8f9fa; border: 1px solid #eee; border-radius: 4px; color: #007bff; text-decoration: none; word-break: break-all;">
+        <i class="fa fa-image"></i> 截图{{ idx + 1 }}：{{ screenshot }}
+      </a>
     {{ /each }}
   </div>
 </div>
 {{ else }}
-<div style="margin-top: 15px; color: #666;">无影片截图</div>
+<div style="margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 4px; color: #666;">
+  暂无影片截图
+</div>
 {{ /if }}

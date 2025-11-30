@@ -80,12 +80,9 @@ async function handler(ctx) {
             .map((item) => {
                 item = $(item);
 
-                // 提取基础信息
-                const titleEl = item.find('.title.is-4.is-spaced a');
-                const videoId = titleEl.text().trim() || '未知ID';
-                const size = item.find('.title.is-4.is-spaced span.is-size-6').text().trim() || '未知大小';
+                const videoId = item.find('.title a').text().trim();
+                const size = item.find('.title span').text().trim();
                 
-                // 提取日期
                 let pubDate;
                 const dateLink = item.find('.subtitle a').attr('href');
                 if (dateLink && dateLink.includes('/date/')) {
@@ -95,35 +92,30 @@ async function handler(ctx) {
                     }
                 }
 
-                // 提取描述（页面中无直接的.description文本，可提取标题补充）
-                const descriptionText = videoId || '无描述';
-                
-                // 提取标签（页面中部分条目无标签）
+                const descriptionText = item.find('.has-text-grey-dark').text().trim();
                 const tags = item
-                    .find('.tags .tag')
+                    .find('.tag')
                     .toArray()
                     .map((t) => $(t).text().trim())
                     .filter(tag => tag);
 
-                // 修正：磁力链接选择器（匹配title="Download Magnet"）
-                const magnet = item.find('a[title="Download Magnet"]').attr('href') || '';
-                
-                // Torrent链接选择器（确认匹配）
-                const torrentLink = item.find('a[title="Download .torrent"]').attr('href') || '';
-                
-                // 条目详情链接
-                const itemLink = titleEl.attr('href') ? new URL(titleEl.attr('href'), rootUrl).href : currentUrl;
+                const magnet = item.find('a[title="Magnet torrent"]').attr('href');
+                const torrentLink = item.find('a[title="Download .torrent"]').attr('href');
+                const itemLink = new URL(item.find('a').first().attr('href'), rootUrl).href;
 
-                // 封面图（懒加载data-src）
+                // 提取封面图
                 const imageEl = item.find('img.image.lazy');
-                const imageSrc = imageEl.attr('data-src') || imageEl.attr('src') || '';
+                const imageSrc = imageEl.attr('data-src') || imageEl.attr('src');
                 const imageUrl = imageSrc ? new URL(imageSrc, rootUrl).href : '';
 
-                // 修正：截图链接提取（遍历所有li下的.img-items）
-                const screenshots = item.find('.images-description ul li .img-items')
+                // 提取影片截图链接（Show Screenshot内的地址）
+                const screenshots = item.find('.images-description .img-items')
                     .toArray()
-                    .map((img) => $(img).text().trim().replace(/\s+/g, '')) // 去除多余空格
-                    .filter(url => url.startsWith('http') && url.includes('.jpg')); // 过滤有效截图链接
+                    .map((img) => $(img).text().trim()) // 截图原始链接
+                    .filter(url => url); // 过滤空链接
+
+                // 处理截图链接（可选：若需直接获取实际图片地址，可发起请求，但可能有反爬限制）
+                // 此处先提取原始链接，模板中可直接显示或跳转
 
                 return {
                     title: `${videoId} ${size}`,
@@ -136,9 +128,9 @@ async function handler(ctx) {
                         pubDate: pubDate || '未知日期',
                         description: descriptionText,
                         tags,
-                        magnet, // 确保传递磁力链接
-                        torrentLink, // 明确命名torrent链接
-                        screenshots,
+                        magnet,
+                        link: torrentLink,
+                        screenshots: screenshots, // 传递截图链接到模板
                     }),
                     category: tags.length > 0 ? tags : [type],
                     enclosure_type: 'application/x-bittorrent',
@@ -165,4 +157,4 @@ async function handler(ctx) {
             item: [],
         };
     }
-}、
+}
