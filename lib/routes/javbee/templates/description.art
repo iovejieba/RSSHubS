@@ -62,7 +62,7 @@
     {{ each screenshots screenshot idx }}
       <a target="_blank" href="{{ screenshot.originalUrl }}" 
          style="display: block; border: 1px solid #eee; border-radius: 6px; overflow: hidden; transition: border-color 0.3s;">
-        <!-- 优先使用拼接直链，失败则切换到原始链接，再失败显示占位图 -->
+        <!-- 优先使用无随机前缀的直链，失败则切换到原始链接，再失败显示占位图 -->
         <img 
           src="{{ screenshot.directUrl }}" 
           alt="{{ screenshot.alt }}" 

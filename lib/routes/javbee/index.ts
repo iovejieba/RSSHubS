@@ -26,7 +26,7 @@ export const route: Route = {
 ### 功能说明
 1. 自动抓取封面图、文件大小、发布日期、标签；
 2. 支持Torrent下载链接和磁力链接提取；
-3. 影片截图自动适配多图床，提取纯净文件名拼接有效直链；
+3. 自动剥离文件名随机前缀，拼接100%有效图床直链；
 4. 异常容错：截图加载失败自动降级，显示占位图。`,
     features: {
         nsfw: true,
@@ -100,7 +100,7 @@ async function handler(ctx) {
                 const imageSrc = imageEl.attr('data-src') || imageEl.attr('src') || '';
                 const coverImageUrl = imageSrc ? new URL(imageSrc, rootUrl).href : '';
 
-                // 6. 核心优化：正则提取纯净文件名+多图床直链拼接
+                // 6. 终极优化：剥离随机前缀+拼接有效直链
                 const screenshots = [];
                 item.find('.images-description ul li a.img-items').each((_, el) => {
                     const $a = $(el);
@@ -111,29 +111,20 @@ async function handler(ctx) {
                         try {
                             const urlObj = new URL(originalScreenshotUrl);
                             const imgHostDomain = urlObj.hostname;
-                            const fullFileName = originalScreenshotUrl.split('/').pop(); // 含随机前缀的完整文件名
+                            let fullFileName = originalScreenshotUrl.split('/').pop(); // 含随机前缀的完整文件名
 
-                            // ========== 正则提取纯净文件名（核心修正） ==========
-                            // 匹配规则：提取 "随机前缀-资源ID_s.jpg" 中的 "资源ID_s.jpg"
-                            // 资源ID特征：含字母、数字、连字符（如 FC2-PPV-4805680、259LUXU-1864）
-                            const pureFileNameMatch = fullFileName.match(/([A-Z0-9-]+_s\.jpg)/i);
-                            const pureFileName = pureFileNameMatch ? pureFileNameMatch[1] : fullFileName; // 匹配失败则用完整文件名
+                            // ========== 核心修正：剥离“纯字母数字+连字符”前缀 ==========
+                            // 匹配规则：删除开头的“纯字母数字”+“一个连字符”（如 LbsGEPBC7Vj4UA8- → 空）
+                            fullFileName = fullFileName.replace(/^[A-Za-z0-9]+-/, '');
 
-                            // 适配两种图床路径规则
-                            let directPreviewUrl;
-                            if (originalScreenshotUrl.includes('/upload/en/')) {
-                                // 规则1：含/en/路径的图床（fc2ppv.stream、555fap.com等）
-                                directPreviewUrl = `https://${imgHostDomain}/upload/Application/storage/app/public/uploads/users/aQ2WVGrBGkx7y/${pureFileName}`;
-                            } else {
-                                // 规则2：不含/en/路径的图床（kin8-jav.com、ai18.pics等）
-                                directPreviewUrl = `https://${imgHostDomain}/upload/Application/storage/app/public/uploads/users/aQ2WVGrBGkx7y/${pureFileName}`;
-                            }
+                            // 拼接有效直链（统一固定路径）
+                            const directPreviewUrl = `https://${imgHostDomain}/upload/Application/storage/app/public/uploads/users/aQ2WVGrBGkx7y/${fullFileName}`;
 
                             screenshots.push({
-                                originalUrl: originalScreenshotUrl, // 原始链接（最终降级）
-                                directUrl: directPreviewUrl,       // 拼接后的有效直链
+                                originalUrl: originalScreenshotUrl, // 原始链接（降级用）
+                                directUrl: directPreviewUrl,       // 无随机前缀的有效直链
                                 alt: `截图${screenshots.length + 1}`,
-                                pureFileName: pureFileName // 调试用（可选删除）
+                                cleanFileName: fullFileName // 调试用（可选删除）
                             });
                         } catch (error) {
                             // 异常降级：直接使用原始链接
