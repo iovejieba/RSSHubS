@@ -95,47 +95,35 @@ async function handler(ctx) {
                     }
                 }
 
-                // 提取描述
+                // 提取描述（页面中无直接的.description文本，可提取标题补充）
                 const descriptionText = videoId || '无描述';
                 
-                // 提取标签
+                // 提取标签（页面中部分条目无标签）
                 const tags = item
                     .find('.tags .tag')
                     .toArray()
                     .map((t) => $(t).text().trim())
                     .filter(tag => tag);
 
-                // 提取下载链接
+                // 修正：磁力链接选择器（匹配title="Download Magnet"）
                 const magnet = item.find('a[title="Download Magnet"]').attr('href') || '';
+                
+                // Torrent链接选择器（确认匹配）
                 const torrentLink = item.find('a[title="Download .torrent"]').attr('href') || '';
+                
+                // 条目详情链接
                 const itemLink = titleEl.attr('href') ? new URL(titleEl.attr('href'), rootUrl).href : currentUrl;
 
-                // 封面图
+                // 封面图（懒加载data-src）
                 const imageEl = item.find('img.image.lazy');
                 const imageSrc = imageEl.attr('data-src') || imageEl.attr('src') || '';
                 const imageUrl = imageSrc ? new URL(imageSrc, rootUrl).href : '';
 
-                // 提取截图：原图链接（a.href）+ 预览图链接（img.src）
-                const screenshots = item.find('.images-description ul li')
+                // 修正：截图链接提取（遍历所有li下的.img-items）
+                const screenshots = item.find('.images-description ul li .img-items')
                     .toArray()
-                    .map((li) => {
-                        const $li = $(li);
-                        const $a = $li.find('a');
-                        const $img = $li.find('img');
-                        
-                        // 提取并补全绝对链接
-                        const originalUrl = $a.attr('href') ? 
-                            (new URL($a.attr('href'), rootUrl).href) : '';
-                        const thumbnailUrl = $img.attr('src') ? 
-                            (new URL($img.attr('src'), rootUrl).href) : '';
-                        
-                        return {
-                            originalUrl,
-                            thumbnailUrl,
-                            alt: $img.attr('alt') || `截图${$li.index() + 1}`
-                        };
-                    })
-                    .filter(s => s.originalUrl && s.thumbnailUrl); // 过滤无效截图
+                    .map((img) => $(img).text().trim().replace(/\s+/g, '')) // 去除多余空格
+                    .filter(url => url.startsWith('http') && url.includes('.jpg')); // 过滤有效截图链接
 
                 return {
                     title: `${videoId} ${size}`,
@@ -148,8 +136,8 @@ async function handler(ctx) {
                         pubDate: pubDate || '未知日期',
                         description: descriptionText,
                         tags,
-                        magnet,
-                        torrentLink,
+                        magnet, // 确保传递磁力链接
+                        torrentLink, // 明确命名torrent链接
                         screenshots,
                     }),
                     category: tags.length > 0 ? tags : [type],
