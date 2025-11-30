@@ -115,31 +115,27 @@ async function handler(ctx) {
                 const imageSrc = imageEl.attr('data-src') || imageEl.attr('src') || '';
                 const imageUrl = imageSrc ? new URL(imageSrc, rootUrl).href : '';
 
-                // ========== 精准匹配你提供的 .images-description 结构 ==========
-                const screenshots = [];
-                // 定位到 .images-description 容器，遍历所有 li > a.img-items
-                item.find('.images-description ul li a.img-items').each((_, el) => {
-                    const $a = $(el);
-                    // 提取a标签内的文本链接，去除多余空格
-                    const originalUrl = $a.text().trim().replace(/\s+/g, '');
-                    
-                    if (originalUrl.startsWith('http') && (originalUrl.includes('.jpg') || originalUrl.includes('.png'))) {
-                        // 若有预览图规则，可在此处替换生成预览图链接（如你之前提供的结构）
-                        // 示例：将 /upload/en/xxx.jpg 转为预览图路径，若无则直接用原图
-                        let thumbnailUrl = originalUrl;
+                // 提取截图：原图链接（a.href）+ 预览图链接（img.src）
+                const screenshots = item.find('.images-description ul li')
+                    .toArray()
+                    .map((li) => {
+                        const $li = $(li);
+                        const $a = $li.find('a');
+                        const $img = $li.find('img');
                         
-                        // 可选：根据图床规则生成预览图链接（适配你之前的示例）
-                        if (originalUrl.includes('/upload/en/')) {
-                            thumbnailUrl = originalUrl.replace('/upload/en/', '/upload/Application/storage/app/public/uploads/users/aQ2WVGrBGkx7y/');
-                        }
-
-                        screenshots.push({
-                            originalUrl: originalUrl,
-                            thumbnailUrl: thumbnailUrl,
-                            alt: `截图${screenshots.length + 1}`
-                        });
-                    }
-                });
+                        // 提取并补全绝对链接
+                        const originalUrl = $a.attr('href') ? 
+                            (new URL($a.attr('href'), rootUrl).href) : '';
+                        const thumbnailUrl = $img.attr('src') ? 
+                            (new URL($img.attr('src'), rootUrl).href) : '';
+                        
+                        return {
+                            originalUrl,
+                            thumbnailUrl,
+                            alt: $img.attr('alt') || `截图${$li.index() + 1}`
+                        };
+                    })
+                    .filter(s => s.originalUrl && s.thumbnailUrl); // 过滤无效截图
 
                 return {
                     title: `${videoId} ${size}`,

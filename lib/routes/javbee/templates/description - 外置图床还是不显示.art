@@ -60,6 +60,7 @@
   <h4 style="margin-bottom: 10px; font-size: 16px; color: #333;">影片截图：</h4>
   <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;">
     {{ each screenshots screenshot idx }}
+      <!-- 完全匹配你提供的 HTML 结构 -->
       <a target="_blank" href="{{ screenshot.originalUrl }}" 
          style="display: block; border: 1px solid #eee; border-radius: 4px; overflow: hidden;">
         <img 
