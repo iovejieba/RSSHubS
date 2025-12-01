@@ -89,7 +89,7 @@ async function handler(ctx) {
         });
         const $list = load(listResponse._data || '');
 
-        // 清理冗余节点
+        // 清理冗余节点（保留图片相关）
         $list('#shortcut').remove();
         $list('tr[onmouseover="this.className=\'tr3 t_two\'"]').remove();
 
@@ -111,7 +111,7 @@ async function handler(ctx) {
             })
             .filter((item) => !item.link.includes('undefined') && item.title);
 
-        // 5. 解析详情页（核心：提取磁力+简化描述+配置Enclosure）
+        // 5. 解析详情页（核心：恢复图片抓取+Folo兼容）
         const items = await Promise.all(
             list.map(async (item) => {
                 const detailKey = `2048:detail:${item.guid}`;
@@ -125,17 +125,47 @@ async function handler(ctx) {
                 });
                 const $detail = load(detailResponse || '');
 
-                // 清理广告和冗余节点
-                $detail('.ads, .tips, script, style').remove();
-                $detail('div[id^="container-"]').remove();
+                // 清理广告（保留图片节点）
+                $detail('.ads, .tips, script').remove();
 
-                // ========== 提取核心信息 ==========
-                // 5.1 提取磁力链接
+                // ========== 修复：图片提取逻辑 ==========
+                const content = $detail('#conttpc, .tpc_content').first();
+                
+                // 5.1 提取所有图片（包括ess-data备用链接）
+                const screenshots = [];
+                content.find('img').each((_, img) => {
+                    const $img = $detail(img);
+                    // 优先使用ess-data真实原图链接
+                    const essData = $img.attr('ess-data') || '';
+                    // 其次使用src链接
+                    const src = $img.attr('src') || '';
+                    // 兜底使用data-src
+                    const dataSrc = $img.attr('data-src') || '';
+
+                    let imgUrl = essData || src || dataSrc;
+                    if (!imgUrl) return;
+
+                    // 相对路径转绝对路径
+                    if (imgUrl.startsWith('/')) {
+                        imgUrl = `${new URL(item.link).origin}${imgUrl}`;
+                    } else if (!imgUrl.startsWith('http')) {
+                        imgUrl = `${new URL(item.link).origin}/${imgUrl}`;
+                    }
+
+                    // 构造图片标签（Folo友好）
+                    screenshots.push(`
+                        <img src="${imgUrl}" 
+                             referrerpolicy="no-referrer" 
+                             style="max-width:100%;margin:5px 0;border-radius:4px;"
+                             onerror="this.src='${src || essData}'">
+                    `.trim());
+                });
+
+                // 5.2 提取磁力链接
                 const magnetText = $detail('textarea.magnet-text').text().trim() || '';
                 const escapedMagnet = magnetText.replace(/&/g, '&amp;');
 
-                // 5.2 提取影片信息
-                const content = $detail('#conttpc, .tpc_content').first();
+                // 5.3 提取影片信息
                 const getInfo = (key) => {
                     const elem = content.find(`:contains("${key}")`).first();
                     return elem.text().replace(key, '').trim() || '未知';
@@ -146,33 +176,27 @@ async function handler(ctx) {
                 const duration = getInfo('影片时间');
                 const desc = getInfo('影片说明') || getInfo('文件说明');
 
-                // 5.3 提取截图（简化图片标签）
-                const screenshots = content.find('img[referrerpolicy="no-referrer"]')
-                    .map((_, img) => {
-                        const src = $detail(img).attr('src') || $detail(img).attr('ess-data') || '';
-                        return src ? `<img src="${src}" referrerpolicy="no-referrer" style="max-width:100%;margin:5px 0;">` : '';
-                    })
-                    .get()
-                    .filter(Boolean);
-
-                // 5.4 计算Enclosure长度（字节）
+                // 5.4 计算Enclosure长度
                 const sizeNum = size.match(/(\d+\.?\d*)/)?.[0] || '0';
                 const unit = size.includes('G') ? 1024 * 1024 * 1024 : 
                              size.includes('M') ? 1024 * 1024 : 1024;
                 const enclosureLength = (parseFloat(sizeNum) * unit).toString();
 
-                // 5.5 简化Description（Folo友好）
+                // 5.5 简化Description（保留图片+核心信息）
                 const simplifiedDesc = `
-                    <div>
+                    <div style="line-height:1.6;">
                         <strong>影片名称：</strong>${name}<br>
                         <strong>文件格式：</strong>${format}<br>
                         <strong>影片大小：</strong>${size}<br>
                         ${duration ? `<strong>影片时长：</strong>${duration}<br>` : ''}
                         <strong>影片说明：</strong>${desc}<br>
-                        <strong>影片截图：</strong><br>${screenshots.join('<br>')}<br>
-                        ${magnetText ? `<strong>磁力链接：</strong><br><a href="${magnetText}" style="color:#dc3545;">${magnetText}</a>` : ''}
+                        ${screenshots.length > 0 ? `<strong>影片截图：</strong><br>${screenshots.join('<br>')}<br>` : ''}
+                        ${magnetText ? `<div style="margin-top:10px;padding:8px;background:#f5f5f5;border-radius:4px;">
+                            <strong>磁力链接：</strong><br>
+                            <a href="${magnetText}" style="color:#dc3545;word-break:break-all;">${magnetText}</a>
+                        </div>` : ''}
                     </div>
-                `.replace(/\n/g, '').replace(/\s+/g, ' ').trim();
+                `.replace(/\n+/g, '').trim();
 
                 // 5.6 作者和发布时间
                 const author = $detail('.fl.black').first().text().trim() || '匿名';
