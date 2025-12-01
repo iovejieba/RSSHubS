@@ -1,5 +1,4 @@
 import { Route } from '@/types';
-
 import cache from '@/utils/cache';
 import ofetch from '@/utils/ofetch';
 import { load } from 'cheerio';
@@ -122,15 +121,23 @@ async function handler(ctx) {
 
                 const content = load(detailResponse);
 
-                content('.ads, .tips').remove();
+                // ========== 1. 清理页面冗余元素 ==========
+                // 移除style/script标签（避免CSS混入description）
+                content('style, script').remove();
+                // 移除广告/推荐文本容器
+                content('.ads, .tips, .ad-wrap, .recommend-text').remove();
+                // 移除下载端推荐文本（根据文本特征匹配）
+                content('body').html((_, html) => 
+                    html.replace(/下载端推荐纯BT下载软件：[\s\S]*?请自行尝试/g, '')
+                );
 
+                // 处理图片懒加载
                 content('ignore_js_op').each(function () {
                     const img = content(this).find('img');
                     const originalSrc = img.attr('data-original');
                     const fallbackSrc = img.attr('src');
-                    // 判断是否有 data-original 属性，若有则使用其值，否则使用 src 属性值
                     const imgSrc = originalSrc || fallbackSrc;
-                    content(this).replaceWith(`<img src="${imgSrc}">`);
+                    content(this).replaceWith(`<img src="${imgSrc}" style="max-width:100%;margin:8px 0;">`);
                 });
 
                 item.author = content('.fl.black').first().text();
@@ -138,36 +145,49 @@ async function handler(ctx) {
 
                 const downloadLink = content('#read_tpc').first().find('a').last();
                 const copyLink = content('#copytext')?.first()?.text();
+                
+                // ========== 2. 简化磁力链接渲染（去掉CSS样式） ==========
                 if (downloadLink?.text()?.startsWith('http') && /bt\.azvmw\.com$/.test(new URL(downloadLink.text()).hostname)) {
                     const torrentResponse = await ofetch(downloadLink.text());
-
                     const torrent = load(torrentResponse);
 
                     item.enclosure_type = 'application/x-bittorrent';
                     const ahref = torrent('.uk-button').last().attr('href');
                     item.enclosure_url = ahref?.startsWith('http') ? ahref : `https://bt.azvmw.com/${ahref}`;
-
                     const magnet = torrent('.uk-button').first().attr('href');
 
-                    downloadLink.replaceWith(
-                        art(path.join(__dirname, 'templates/download.art'), {
-                            magnet,
-                            torrent: item.enclosure_url,
-                        })
-                    );
+                    // 替换为极简链接（无CSS样式）
+                    downloadLink.replaceWith(`
+                        <div style="margin:10px 0;">
+                            <a href="${magnet}" style="color:#dc3545;margin-right:10px;">磁力链接</a>
+                            <a href="${item.enclosure_url}" style="color:#28a745;">Torrent下载</a>
+                        </div>
+                    `);
                 } else if (copyLink?.startsWith('magnet')) {
-                    // copy link
                     item.enclosure_url = copyLink;
                     item.enclosure_type = 'x-scheme-handler/magnet';
+                    // 插入极简磁力链接
+                    content('#read_tpc').append(`
+                        <div style="margin:10px 0;">
+                            <a href="${copyLink}" style="color:#dc3545;">磁力链接</a>
+                        </div>
+                    `);
                 }
 
+                // 处理隐藏图片
                 const desp = content('#read_tpc').first();
-
                 content('.showhide img').each(function () {
-                    desp.append(`<br><img style="max-width: 100%;" src="${content(this).attr('src')}">`);
+                    desp.append(`<img style="max-width:100%;margin:8px 0;" src="${content(this).attr('src')}">`);
                 });
 
-                item.description = desp.html();
+                // ========== 3. 最终清理description ==========
+                item.description = desp.html()
+                    // 移除残留的CSS类定义
+                    .replace(/\.magnet-box\s*\{[\s\S]*?\}/g, '')
+                    // 移除多余换行和空格
+                    .replace(/\n\s+/g, '\n')
+                    // 移除空行
+                    .replace(/^\s*\n/gm, '');
 
                 return item;
             })

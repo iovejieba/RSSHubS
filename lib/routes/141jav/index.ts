@@ -1,5 +1,4 @@
 import { Route } from '@/types';
-
 import { getSubPath } from '@/utils/common-utils';
 import got from '@/utils/got';
 import { load } from 'cheerio';
@@ -89,13 +88,34 @@ async function handler(ctx) {
                 .toArray()
                 .map((t) => $(t).text().trim());
             const magnet = item.find('a[title="Magnet torrent"]').attr('href');
-            const link = item.find('a[title="Download .torrent"]').attr('href');
+            const torrentLink = item.find('a[title="Download .torrent"]').attr('href'); // 区分torrent链接
             const image = item.find('.image').attr('src');
+            const detailLink = new URL(item.find('a').first().attr('href'), rootUrl).href;
+
+            // ========== 关键修正：磁力链接转义 + Enclosure 规范配置 ==========
+            // XML转义：& → &amp;，避免解析错误
+            const escapedMagnet = magnet ? magnet.replace(/&/g, '&amp;') : '';
+            const escapedTorrentLink = torrentLink ? torrentLink.replace(/&/g, '&amp;') : '';
+
+            // 构造多Enclosure（磁力+Torrent，供Folo识别）
+            const enclosures = [];
+            if (escapedMagnet) {
+                enclosures.push({
+                    url: escapedMagnet,
+                    type: 'x-scheme-handler/magnet', // 磁力链接正确Type
+                });
+            }
+            if (escapedTorrentLink) {
+                enclosures.push({
+                    url: escapedTorrentLink,
+                    type: 'application/x-bittorrent', // Torrent文件正确Type
+                });
+            }
 
             return {
                 title: `${id} ${size}`,
                 pubDate: parseDate(pubDate, 'YYYY/MM/DD'),
-                link: new URL(item.find('a').first().attr('href'), rootUrl).href,
+                link: detailLink, // 详情页链接（符合RSS规范）
                 description: art(path.join(__dirname, 'templates/description.art'), {
                     image,
                     id,
@@ -104,13 +124,15 @@ async function handler(ctx) {
                     description,
                     actresses,
                     tags,
-                    magnet,
-                    link,
+                    magnet, // 原链接（description中无需转义）
+                    torrentLink,
                 }),
                 author: actresses.join(', '),
                 category: [...tags, ...actresses],
-                enclosure_type: 'application/x-bittorrent',
-                enclosure_url: magnet,
+                enclosure: enclosures.length > 0 ? enclosures : undefined, // 多Enclosure配置
+                // 兼容旧客户端：保留单个enclosure（可选）
+                // enclosure_url: escapedMagnet || escapedTorrentLink,
+                // enclosure_type: escapedMagnet ? 'x-scheme-handler/magnet' : 'application/x-bittorrent',
             };
         });
 
