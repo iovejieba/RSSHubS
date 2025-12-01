@@ -1,50 +1,47 @@
 {{ if image }}
-<img src="{{ image }}" style="max-width:100%;border-radius:6px;margin-bottom:15px;" referrerpolicy="no-referrer">
+<img src="{{ image }}">
 {{ /if }}
-
-<table style="width:100%;border-collapse:collapse;border:1px solid #eee;margin-bottom:20px;">
-  <tr style="background:#f8f9fa;">
-    <th style="padding:10px;text-align:left;border:1px solid #eee;">资源ID</th>
-    <td style="padding:10px;border:1px solid #eee;">{{ id }}</td>
-  </tr>
-  <tr>
-    <th style="padding:10px;text-align:left;border:1px solid #eee;">文件大小</th>
-    <td style="padding:10px;border:1px solid #eee;">{{ size }}</td>
-  </tr>
-  <tr style="background:#f8f9fa;">
-    <th style="padding:10px;text-align:left;border:1px solid #eee;">发布日期</th>
-    <td style="padding:10px;border:1px solid #eee;">{{ pubDate }}</td>
-  </tr>
-  <tr>
-    <th style="padding:10px;text-align:left;border:1px solid #eee;">简介</th>
-    <td style="padding:10px;border:1px solid #eee;">{{ description }}</td>
-  </tr>
-  <tr style="background:#f8f9fa;">
-    <th style="padding:10px;text-align:left;border:1px solid #eee;">演员</th>
-    <td style="padding:10px;border:1px solid #eee;">{{ actresses.join(', ') || '无' }}</td>
-  </tr>
-  <tr>
-    <th style="padding:10px;text-align:left;border:1px solid #eee;">标签</th>
-    <td style="padding:10px;border:1px solid #eee;">{{ tags.join(', ') || '无' }}</td>
-  </tr>
-  <tr style="background:#f8f9fa;">
-    <th style="padding:10px;text-align:left;border:1px solid #eee;">磁力链接</th>
-    <td style="padding:10px;border:1px solid #eee;">
-      {{ if magnet }}
-        <a href="{{ magnet }}" style="color:#dc3545;text-decoration:none;">点击复制/打开</a>
-      {{ else }}
-        无
-      {{ /if }}
-    </td>
-  </tr>
-  <tr>
-    <th style="padding:10px;text-align:left;border:1px solid #eee;">Torrent下载</th>
-    <td style="padding:10px;border:1px solid #eee;">
-      {{ if torrentLink }}
-        <a href="{{ torrentLink }}" style="color:#28a745;text-decoration:none;">点击下载</a>
-      {{ else }}
-        无
-      {{ /if }}
-    </td>
-  </tr>
+<table>
+  <tbody>
+    <tr>
+      <th>ID</th>
+      <td>{{ id }}</td>
+    </tr>
+    <tr>
+      <th>Size</th>
+      <td>{{ size }}</td>
+    </tr>
+    <tr>
+      <th>Date</th>
+      <td>{{ pubDate }}</td>
+    </tr>
+    <tr>
+      <th>Description</th>
+      <td>{{ description }}</td>
+    </tr>
+    <tr>
+      <th>Actress</th>
+      <td>
+        {{ each actresses actress }}
+          <a href="/actress/{{ actress }}">{{ actress }}</a>&nbsp
+        {{ /each }}
+      </td>
+    </tr>
+    <tr>
+      <th>Tag</th>
+      <td>
+        {{ each tags tag }}
+          <a href="/tag/{{ tag }}">{{ tag }}</a>&nbsp
+        {{ /each }}
+      </td>
+    </tr>
+    <tr>
+      <th>Magnet torrent</th>
+      <td><a href="{{ magnet }}">Magnet torrent link</a></td>
+    </tr>
+    <tr>
+      <th>Download .torrent</th>
+      <td><a href="{{ link }}">Download torrent</a></td>
+    </tr>
+  </tbody>
 </table>

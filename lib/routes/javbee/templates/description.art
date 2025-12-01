@@ -5,29 +5,41 @@
      alt="封面图">
 {{ /if }}
 
-<div style="margin-bottom:10px;">
-    <strong>资源信息：</strong><br>
-    ID：{{ videoId }}<br>
-    大小：{{ size }}<br>
-    日期：{{ pubDate }}<br>
-    标签：{{ tags.join(', ') || '无' }}
+<div style="margin-bottom:10px;line-height:1.6;">
+    <strong>资源ID：</strong>{{ videoId }}<br>
+    <strong>文件大小：</strong>{{ size }}<br>
+    <strong>发布日期：</strong>{{ pubDate }}<br>
+    <strong>标签：</strong>{{ tags.join(', ') || '无' }}
 </div>
 
-<div style="margin:15px 0;padding:10px;background:#f5f5f5;border-radius:5px;">
-    {{ if magnet }}
-        <div style="margin-bottom:8px;">
-            <strong>磁力链接：</strong><br>
-            <a href="{{ magnet }}" style="color:#dc3545;text-decoration:none;word-break:break-all;">{{ magnet.replace(/&amp;/g, '&') }}</a>
-        </div>
-    {{ /if }}
-    {{ if torrentLink }}
-        <div>
-            <strong>Torrent下载：</strong><br>
-            <a href="{{ torrentLink }}" style="color:#28a745;text-decoration:none;">点击下载.torrent文件</a>
-        </div>
-    {{ /if }}
+<!-- 磁力链接：点击复制（隐藏完整内容） -->
+{{ if magnetRaw }}
+<div style="margin:15px 0;padding:12px;background:#f0f8fb;border-radius:8px;border:1px solid #e3f2fd;">
+    <strong style="color:#1976d2;">磁力链接：</strong>
+    <!-- 隐藏的完整磁力链接（用于复制） -->
+    <textarea id="magnet-{{ videoId }}" style="position:absolute;left:-9999px;opacity:0;">{{ magnetRaw }}</textarea>
+    <!-- 点击复制按钮（RSS兼容版） -->
+    <a href="javascript:void(0);" 
+       onclick="document.getElementById('magnet-{{ videoId }}').select();document.execCommand('copy');alert('复制成功！');"
+       style="display:inline-block;margin:8px 0;padding:6px 12px;background:#2196f3;color:#fff;border-radius:4px;text-decoration:none;">
+       点击复制磁力链接
+    </a>
+    <!-- 降级提示（JS失效时） -->
+    <small style="display:block;margin-top:6px;color:#666;">若点击无效，请长按/选中下方文本复制：<br>
+        <code style="font-size:12px;word-break:break-all;color:#dc3545;">{{ magnetRaw.substring(0, 30) }}...</code>
+    </small>
 </div>
+{{ /if }}
 
+<!-- Torrent链接展示 -->
+{{ if torrentLink }}
+<div style="margin:10px 0;padding:8px;background:#f9f9f9;border-radius:4px;">
+    <strong>Torrent下载：</strong>
+    <a href="{{ torrentLink }}" style="color:#28a745;">点击下载.torrent文件</a>
+</div>
+{{ /if }}
+
+<!-- 截图展示 -->
 {{ if screenshots.length > 0 }}
 <div style="margin-top:15px;">
     <strong>影片截图：</strong><br>
@@ -37,7 +49,6 @@
              style="max-width:100%;margin:5px 0;border-radius:4px;" 
              referrerpolicy="no-referrer" 
              onerror="this.src='{{ screenshot.originalUrl }}'"><br>
-        <small><a href="{{ screenshot.directUrl }}" target="_blank" style="color:#666;">{{ screenshot.alt }}原图</a></small><br>
     {{ /each }}
 </div>
 {{ /if }}
