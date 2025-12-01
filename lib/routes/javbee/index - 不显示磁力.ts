@@ -27,7 +27,7 @@ export const route: Route = {
 1. 自动抓取封面图、文件大小、发布日期、标签；
 2. 支持Torrent下载链接和磁力链接提取；
 3. 自动剥离文件名随机前缀，拼接100%有效图床直链；
-4. 全客户端兼容：Folo可识别磁力链接，其他RSS客户端支持点击复制。`,
+4. 全客户端兼容：Folo可识别磁力链接，其他RSS客户端正常渲染。`,
     features: {
         nsfw: true,
     },
@@ -90,18 +90,22 @@ async function handler(ctx) {
                     .map((t) => $(t).text().trim())
                     .filter(tag => tag);
 
-                // 4. 提取下载链接（关键：分离Enclosure转义和展示用原始链接）
+                // 4. 提取下载链接（关键：双版本转义处理）
                 const magnetRaw = item.find('a[title="Download Magnet"]').attr('href') || '';
                 const torrentLinkRaw = item.find('a[title="Download .torrent"]').attr('href') || '';
                 const itemLink = titleEl.attr('href') ? new URL(titleEl.attr('href'), rootUrl).href : currentUrl;
 
-                // 4.1 XML规范转义（仅用于Enclosure，保证Folo识别）
+                // 4.1 XML规范转义（用于Enclosure，兼容Folo/XML解析器）
                 const escapedMagnet = magnetRaw 
                     ? magnetRaw.replace(/&/g, '&amp;').replace(/=/g, '&#61;').replace(/\+/g, '&#43;') 
                     : '';
                 const escapedTorrent = torrentLinkRaw 
                     ? torrentLinkRaw.replace(/&/g, '&amp;') 
                     : '';
+
+                // 4.2 HTML展示转义（用于Description，用户可直接点击）
+                const displayMagnet = magnetRaw.replace(/&/g, '&amp;');
+                const displayTorrent = torrentLinkRaw.replace(/&/g, '&amp;');
 
                 // 5. 提取封面图
                 const imageEl = item.find('img.image.lazy');
@@ -142,7 +146,7 @@ async function handler(ctx) {
                 if (escapedMagnet) {
                     enclosure = {
                         url: escapedMagnet,
-                        type: 'x-scheme-handler/magnet', // Folo识别的磁力类型
+                        type: 'x-scheme-handler/magnet', // 兼容所有客户端的磁力类型
                         length: size.replace(/\D/g, '') || '0', // Folo必填length
                     };
                 } else if (escapedTorrent) {
@@ -153,24 +157,25 @@ async function handler(ctx) {
                     };
                 }
 
-                // 8. 返回Item（传递原始磁力链接到模板用于点击复制）
+                // 8. 返回Item（全客户端兼容配置）
                 return {
                     title: `${videoId} ${size}`,
-                    pubDate: parseDate(pubDate, 'YYYY-MM-DD'),
+                    pubDate: parseDate(pubDate, 'YYYY-MM-DD'), // RFC822格式，兼容所有客户端
                     link: itemLink,
-                    guid: `${itemLink}-${videoId}`.replace(/\//g, '-'),
+                    guid: `${itemLink}-${videoId}`.replace(/\//g, '-'), // 唯一GUID，避免Folo去重错误
                     description: art(path.join(__dirname, 'templates/description.art'), {
                         coverImage: coverImageUrl,
                         videoId,
                         size,
                         pubDate: pubDate || '未知日期',
                         tags,
-                        magnetRaw: magnetRaw, // 原始磁力链接（用于复制）
-                        torrentLink: escapedTorrent, // Torrent链接（用于展示）
+                        magnet: displayMagnet, // HTML友好的链接
+                        torrentLink: displayTorrent,
                         screenshots,
                     }),
                     category: tags.length > 0 ? tags : [type],
-                    enclosure: enclosure,
+                    enclosure: enclosure, // 单Enclosure，Folo优先识别
+                    // 兼容旧客户端的冗余配置（可选）
                     enclosure_type: enclosure?.type || '',
                     enclosure_url: enclosure?.url || '',
                 };
