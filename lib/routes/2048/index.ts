@@ -1,9 +1,13 @@
-import { Route } from '@/types';
+import path from 'node:path';
+
+import { load } from 'cheerio';
+
+import type { Route } from '@/types';
 import cache from '@/utils/cache';
 import ofetch from '@/utils/ofetch';
-import { load } from 'cheerio';
-import timezone from '@/utils/timezone';
 import { parseDate } from '@/utils/parse-date';
+import { art } from '@/utils/render';
+import timezone from '@/utils/timezone';
 
 export const route: Route = {
     path: '/:id?',
@@ -61,189 +65,119 @@ export const route: Route = {
 
 async function handler(ctx) {
     const id = ctx.req.param('id') ?? '3';
+
     const rootUrl = 'https://hjd2048.com';
+    // 获取地址发布页指向的 URL
+    const domainInfo = (await cache.tryGet('2048:domainInfo', async () => {
+        const response = await ofetch('https://2048.info');
+        const $ = load(response);
+        const onclickValue = $('.button').first().attr('onclick');
+        const targetUrl = onclickValue.match(/window\.open\('([^']+)'/)[1];
 
-    try {
-        // 1. 获取域名信息（带缓存）
-        const domainInfo = (await cache.tryGet('2048:domainInfo', async () => {
-            const response = await ofetch('https://2048.info');
-            const $ = load(response);
-            const onclickValue = $('.button').first().attr('onclick') || '';
-            const matchResult = onclickValue.match(/window\.open\('([^']+)'/);
-            return { url: matchResult?.[1] || rootUrl };
-        })) as { url: string };
+        return { url: targetUrl };
+    })) as { url: string };
+    // 获取重定向后的url和safeid
+    const redirectResponse = await ofetch.raw(domainInfo.url);
+    const currentUrl = `${redirectResponse.url}thread.php?fid-${id}.html`;
+    const redirectPageContent = load(redirectResponse._data);
+    const safeId =
+        redirectPageContent('script')
+            .text()
+            .match(/var safeid='(.*?)',/)?.[1] ?? '';
 
-        // 2. 获取重定向URL和safeId
-        const redirectResponse = await ofetch.raw(domainInfo.url);
-        const redirectUrl = redirectResponse.url || rootUrl;
-        const currentUrl = `${redirectUrl}thread.php?fid-${id}.html`;
-        
-        const redirectPage = load(redirectResponse._data || '');
-        const scriptText = redirectPage('script').text() || '';
-        const safeIdMatch = scriptText.match(/var safeid='(.*?)',/);
-        const safeId = safeIdMatch?.[1] || '';
+    const response = await ofetch.raw(currentUrl, {
+        headers: {
+            cookie: `_safe=${safeId}`,
+        },
+    });
 
-        // 3. 请求列表页
-        const listResponse = await ofetch.raw(currentUrl, {
-            headers: { cookie: `_safe=${safeId}` },
-        });
-        const $list = load(listResponse._data || '');
+    const $ = load(response._data);
+    const currentHost = `https://${new URL(response.url).host}`; // redirected host
 
-        // 清理冗余节点（保留图片相关）
-        $list('#shortcut').remove();
-        $list('tr[onmouseover="this.className=\'tr3 t_two\'"]').remove();
+    $('#shortcut').remove();
+    $('tr[onmouseover="this.className=\'tr3 t_two\'"]').remove();
 
-        // 4. 解析列表项
-        const list = $list('#ajaxtable tbody .tr2')
-            .last()
-            .nextAll('.tr3')
-            .toArray()
-            .map((item) => {
-                const $item = $list(item);
-                const $subject = $item.find('a.subject');
-                const href = $subject.attr('href') || '';
-                const title = $subject.text().trim() || '未知标题';
-                const currentHost = redirectUrl ? `https://${new URL(redirectUrl).host}` : rootUrl;
-                const link = href ? `${currentHost}/${href}` : currentHost;
-                const guid = href ? `${rootUrl}/2048/${href}` : `${rootUrl}/2048/${id}`;
+    const list = $('#ajaxtable tbody .tr2')
+        .last()
+        .nextAll('.tr3')
+        .toArray()
+        .map((item) => {
+            item = $(item).find('a.subject');
 
-                return { title, link, guid };
-            })
-            .filter((item) => !item.link.includes('undefined') && item.title);
+            return {
+                title: item.text(),
+                link: `${currentHost}/${item.attr('href')}`,
+                guid: `${rootUrl}/2048/${item.attr('href')}`,
+            };
+        })
+        .filter((item) => !item.link.includes('undefined'));
 
-        // 5. 解析详情页（核心：恢复图片抓取+Folo兼容）
-        const items = await Promise.all(
-            list.map(async (item) => {
-                const detailKey = `2048:detail:${item.guid}`;
-                const cachedDetail = await cache.get(detailKey);
-                
-                if (cachedDetail) return JSON.parse(cachedDetail);
-
-                // 请求详情页
+    const items = await Promise.all(
+        list.map((item) =>
+            cache.tryGet(item.guid, async () => {
                 const detailResponse = await ofetch(item.link, {
-                    headers: { cookie: `_safe=${safeId}` },
-                });
-                const $detail = load(detailResponse || '');
-
-                // 清理广告（保留图片节点）
-                $detail('.ads, .tips, script').remove();
-
-                // ========== 修复：图片提取逻辑 ==========
-                const content = $detail('#conttpc, .tpc_content').first();
-                
-                // 5.1 提取所有图片（包括ess-data备用链接）
-                const screenshots = [];
-                content.find('img').each((_, img) => {
-                    const $img = $detail(img);
-                    // 优先使用ess-data真实原图链接
-                    const essData = $img.attr('ess-data') || '';
-                    // 其次使用src链接
-                    const src = $img.attr('src') || '';
-                    // 兜底使用data-src
-                    const dataSrc = $img.attr('data-src') || '';
-
-                    let imgUrl = essData || src || dataSrc;
-                    if (!imgUrl) return;
-
-                    // 相对路径转绝对路径
-                    if (imgUrl.startsWith('/')) {
-                        imgUrl = `${new URL(item.link).origin}${imgUrl}`;
-                    } else if (!imgUrl.startsWith('http')) {
-                        imgUrl = `${new URL(item.link).origin}/${imgUrl}`;
-                    }
-
-                    // 构造图片标签（Folo友好）
-                    screenshots.push(`
-                        <img src="${imgUrl}" 
-                             referrerpolicy="no-referrer" 
-                             style="max-width:100%;margin:5px 0;border-radius:4px;"
-                             onerror="this.src='${src || essData}'">
-                    `.trim());
+                    headers: {
+                        cookie: `_safe=${safeId}`,
+                    },
                 });
 
-                // 5.2 提取磁力链接
-                const magnetText = $detail('textarea.magnet-text').text().trim() || '';
-                const escapedMagnet = magnetText.replace(/&/g, '&amp;');
+                const content = load(detailResponse);
 
-                // 5.3 提取影片信息
-                const getInfo = (key) => {
-                    const elem = content.find(`:contains("${key}")`).first();
-                    return elem.text().replace(key, '').trim() || '未知';
-                };
-                const name = getInfo('影片名称');
-                const format = getInfo('影片格式') || getInfo('文件格式');
-                const size = getInfo('影片大小');
-                const duration = getInfo('影片时间');
-                const desc = getInfo('影片说明') || getInfo('文件说明');
+                content('.ads, .tips').remove();
 
-                // 5.4 计算Enclosure长度
-                const sizeNum = size.match(/(\d+\.?\d*)/)?.[0] || '0';
-                const unit = size.includes('G') ? 1024 * 1024 * 1024 : 
-                             size.includes('M') ? 1024 * 1024 : 1024;
-                const enclosureLength = (parseFloat(sizeNum) * unit).toString();
+                content('ignore_js_op').each(function () {
+                    const img = content(this).find('img');
+                    const originalSrc = img.attr('data-original');
+                    const fallbackSrc = img.attr('src');
+                    // 判断是否有 data-original 属性，若有则使用其值，否则使用 src 属性值
+                    const imgSrc = originalSrc || fallbackSrc;
+                    content(this).replaceWith(`<img src="${imgSrc}">`);
+                });
 
-                // 5.5 简化Description（保留图片+核心信息）
-                const simplifiedDesc = `
-                    <div style="line-height:1.6;">
-                        <strong>影片名称：</strong>${name}<br>
-                        <strong>文件格式：</strong>${format}<br>
-                        <strong>影片大小：</strong>${size}<br>
-                        ${duration ? `<strong>影片时长：</strong>${duration}<br>` : ''}
-                        <strong>影片说明：</strong>${desc}<br>
-                        ${screenshots.length > 0 ? `<strong>影片截图：</strong><br>${screenshots.join('<br>')}<br>` : ''}
-                        ${magnetText ? `<div style="margin-top:10px;padding:8px;background:#f5f5f5;border-radius:4px;">
-                            <strong>磁力链接：</strong><br>
-                            <a href="${magnetText}" style="color:#dc3545;word-break:break-all;">${magnetText}</a>
-                        </div>` : ''}
-                    </div>
-                `.replace(/\n+/g, '').trim();
+                item.author = content('.fl.black').first().text();
+                item.pubDate = timezone(parseDate(content('span.fl.gray').first().attr('title')), +8);
 
-                // 5.6 作者和发布时间
-                const author = $detail('.fl.black').first().text().trim() || '匿名';
-                const pubDateTitle = $detail('span.fl.gray').first().attr('title') || '';
-                const pubDate = pubDateTitle ? timezone(parseDate(pubDateTitle), +8) : new Date();
+                const downloadLink = content('#read_tpc').first().find('a').last();
+                const copyLink = content('#copytext')?.first()?.text();
+                if (downloadLink?.text()?.startsWith('http') && /bt\.azvmw\.com$/.test(new URL(downloadLink.text()).hostname)) {
+                    const torrentResponse = await ofetch(downloadLink.text());
 
-                // 构造最终Item
-                const finalItem = {
-                    title: item.title,
-                    link: item.link,
-                    guid: item.guid,
-                    author,
-                    pubDate,
-                    description: simplifiedDesc,
-                    enclosure: magnetText ? {
-                        url: escapedMagnet,
-                        type: 'x-scheme-handler/magnet',
-                        length: enclosureLength,
-                    } : undefined,
-                    enclosure_url: escapedMagnet,
-                    enclosure_type: 'x-scheme-handler/magnet',
-                };
+                    const torrent = load(torrentResponse);
 
-                // 缓存详情页数据（1小时）
-                await cache.set(detailKey, JSON.stringify(finalItem), 3600);
-                return finalItem;
+                    item.enclosure_type = 'application/x-bittorrent';
+                    const ahref = torrent('.uk-button').last().attr('href');
+                    item.enclosure_url = ahref?.startsWith('http') ? ahref : `https://bt.azvmw.com/${ahref}`;
+
+                    const magnet = torrent('.uk-button').first().attr('href');
+
+                    downloadLink.replaceWith(
+                        art(path.join(__dirname, 'templates/download.art'), {
+                            magnet,
+                            torrent: item.enclosure_url,
+                        })
+                    );
+                } else if (copyLink?.startsWith('magnet')) {
+                    // copy link
+                    item.enclosure_url = copyLink;
+                    item.enclosure_type = 'x-scheme-handler/magnet';
+                }
+
+                const desp = content('#read_tpc').first();
+
+                content('.showhide img').each(function () {
+                    desp.append(`<br><img style="max-width: 100%;" src="${content(this).attr('src')}">`);
+                });
+
+                item.description = desp.html();
+
+                return item;
             })
-        );
+        )
+    );
 
-        // 6. 生成Feed标题
-        const breadCrumb = $list('#main #breadCrumb a').last().text().trim() || '最新资源';
-        const feedTitle = `2048核基地 - ${breadCrumb}`;
-
-        return {
-            title: feedTitle,
-            link: currentUrl,
-            item: items,
-        };
-
-    } catch (error) {
-        console.error('2048 RSSHub Error:', error);
-        ctx.status = 500;
-        return {
-            title: '2048核基地 - 订阅失败',
-            link: rootUrl,
-            description: `错误信息：${error.message}`,
-            item: [],
-        };
-    }
+    return {
+        title: `${$('#main #breadCrumb a').last().text()} - 2048核基地`,
+        link: currentUrl,
+        item: items,
+    };
 }
