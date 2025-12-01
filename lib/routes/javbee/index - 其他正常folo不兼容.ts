@@ -9,7 +9,7 @@ import path from 'node:path';
 export const route: Route = {
     path: '/:type/:keyword{.*}?',
     categories: ['multimedia'],
-    name: 'JavBee 通用订阅（全客户端兼容）',
+    name: 'JavBee 通用订阅',
     maintainers: ['cgkings', 'nczitzk'],
     parameters: { 
         type: '类型，可选值：new(最新)、popular(热门)、random(随机)、tag(指定标签)、date(指定日期)', 
@@ -27,7 +27,7 @@ export const route: Route = {
 1. 自动抓取封面图、文件大小、发布日期、标签；
 2. 支持Torrent下载链接和磁力链接提取；
 3. 自动剥离文件名随机前缀，拼接100%有效图床直链；
-4. 全客户端兼容：Folo可识别磁力链接，其他RSS客户端正常渲染。`,
+4. 异常容错：截图加载失败自动降级，显示占位图。`,
     features: {
         nsfw: true,
     },
@@ -36,7 +36,7 @@ export const route: Route = {
 async function handler(ctx) {
     let currentUrl;
     const rootUrl = 'https://javbee.vip';
-    const timeout = 8000;
+    const timeout = 8000; // 请求超时时间
 
     try {
         const type = ctx.req.param('type');
@@ -90,48 +90,44 @@ async function handler(ctx) {
                     .map((t) => $(t).text().trim())
                     .filter(tag => tag);
 
-                // 4. 提取下载链接（关键：双版本转义处理）
-                const magnetRaw = item.find('a[title="Download Magnet"]').attr('href') || '';
-                const torrentLinkRaw = item.find('a[title="Download .torrent"]').attr('href') || '';
+                // 4. 提取下载链接
+                const magnet = item.find('a[title="Download Magnet"]').attr('href') || '';
+                const torrentLink = item.find('a[title="Download .torrent"]').attr('href') || '';
                 const itemLink = titleEl.attr('href') ? new URL(titleEl.attr('href'), rootUrl).href : currentUrl;
 
-                // 4.1 XML规范转义（用于Enclosure，兼容Folo/XML解析器）
-                const escapedMagnet = magnetRaw 
-                    ? magnetRaw.replace(/&/g, '&amp;').replace(/=/g, '&#61;').replace(/\+/g, '&#43;') 
-                    : '';
-                const escapedTorrent = torrentLinkRaw 
-                    ? torrentLinkRaw.replace(/&/g, '&amp;') 
-                    : '';
-
-                // 4.2 HTML展示转义（用于Description，用户可直接点击）
-                const displayMagnet = magnetRaw.replace(/&/g, '&amp;');
-                const displayTorrent = torrentLinkRaw.replace(/&/g, '&amp;');
-
-                // 5. 提取封面图
+                // 5. 提取封面图（懒加载data-src）
                 const imageEl = item.find('img.image.lazy');
                 const imageSrc = imageEl.attr('data-src') || imageEl.attr('src') || '';
                 const coverImageUrl = imageSrc ? new URL(imageSrc, rootUrl).href : '';
 
-                // 6. 截图处理（Folo友好型简化）
+                // 6. 终极优化：剥离随机前缀+拼接有效直链
                 const screenshots = [];
                 item.find('.images-description ul li a.img-items').each((_, el) => {
                     const $a = $(el);
                     const originalScreenshotUrl = $a.text().trim().replace(/\s+/g, '');
                     
+                    // 验证原始链接有效性
                     if (originalScreenshotUrl.startsWith('https') && originalScreenshotUrl.endsWith('_s.jpg')) {
                         try {
                             const urlObj = new URL(originalScreenshotUrl);
                             const imgHostDomain = urlObj.hostname;
-                            let fullFileName = originalScreenshotUrl.split('/').pop();
-                            fullFileName = fullFileName.replace(/^[A-Za-z0-9]+-/, ''); // 剥离随机前缀
+                            let fullFileName = originalScreenshotUrl.split('/').pop(); // 含随机前缀的完整文件名
+
+                            // ========== 核心修正：剥离“纯字母数字+连字符”前缀 ==========
+                            // 匹配规则：删除开头的“纯字母数字”+“一个连字符”（如 LbsGEPBC7Vj4UA8- → 空）
+                            fullFileName = fullFileName.replace(/^[A-Za-z0-9]+-/, '');
+
+                            // 拼接有效直链（统一固定路径）
                             const directPreviewUrl = `https://${imgHostDomain}/upload/Application/storage/app/public/uploads/users/aQ2WVGrBGkx7y/${fullFileName}`;
 
                             screenshots.push({
-                                originalUrl: originalScreenshotUrl,
-                                directUrl: directPreviewUrl,
+                                originalUrl: originalScreenshotUrl, // 原始链接（降级用）
+                                directUrl: directPreviewUrl,       // 无随机前缀的有效直链
                                 alt: `截图${screenshots.length + 1}`,
+                                cleanFileName: fullFileName // 调试用（可选删除）
                             });
                         } catch (error) {
+                            // 异常降级：直接使用原始链接
                             screenshots.push({
                                 originalUrl: originalScreenshotUrl,
                                 directUrl: originalScreenshotUrl,
@@ -141,43 +137,24 @@ async function handler(ctx) {
                     }
                 });
 
-                // 7. 构造Enclosure（Folo兼容：单Enclosure+正确Type）
-                let enclosure = null;
-                if (escapedMagnet) {
-                    enclosure = {
-                        url: escapedMagnet,
-                        type: 'x-scheme-handler/magnet', // 兼容所有客户端的磁力类型
-                        length: size.replace(/\D/g, '') || '0', // Folo必填length
-                    };
-                } else if (escapedTorrent) {
-                    enclosure = {
-                        url: escapedTorrent,
-                        type: 'application/x-bittorrent',
-                        length: size.replace(/\D/g, '') || '0',
-                    };
-                }
-
-                // 8. 返回Item（全客户端兼容配置）
+                // 7. 构造返回数据
                 return {
                     title: `${videoId} ${size}`,
-                    pubDate: parseDate(pubDate, 'YYYY-MM-DD'), // RFC822格式，兼容所有客户端
+                    pubDate: parseDate(pubDate, 'YYYY-MM-DD'),
                     link: itemLink,
-                    guid: `${itemLink}-${videoId}`.replace(/\//g, '-'), // 唯一GUID，避免Folo去重错误
                     description: art(path.join(__dirname, 'templates/description.art'), {
                         coverImage: coverImageUrl,
                         videoId,
                         size,
                         pubDate: pubDate || '未知日期',
                         tags,
-                        magnet: displayMagnet, // HTML友好的链接
-                        torrentLink: displayTorrent,
+                        magnet,
+                        torrentLink,
                         screenshots,
                     }),
                     category: tags.length > 0 ? tags : [type],
-                    enclosure: enclosure, // 单Enclosure，Folo优先识别
-                    // 兼容旧客户端的冗余配置（可选）
-                    enclosure_type: enclosure?.type || '',
-                    enclosure_url: enclosure?.url || '',
+                    enclosure_type: 'application/x-bittorrent',
+                    enclosure_url: torrentLink,
                 };
             });
 

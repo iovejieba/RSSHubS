@@ -1,82 +1,43 @@
 {{ if coverImage }}
-<img src="{{ coverImage }}" style="max-width: 100%; border-radius: 6px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" referrerpolicy="no-referrer">
+<img src="{{ coverImage }}" 
+     style="max-width:100%;border-radius:6px;margin-bottom:15px;" 
+     referrerpolicy="no-referrer" 
+     alt="封面图">
 {{ /if }}
 
-<table style="width: 100%; border-collapse: collapse; border: 1px solid #eee; margin-bottom: 20px; border-radius: 6px; overflow: hidden;">
-  <tbody>
-    <tr style="background-color: #f8f9fa;">
-      <th style="padding: 10px; text-align: left; border: 1px solid #eee; font-weight: 600; color: #333;">资源ID/标题</th>
-      <td style="padding: 10px; border: 1px solid #eee; color: #495057;">{{ videoId }}</td>
-    </tr>
-    <tr>
-      <th style="padding: 10px; text-align: left; border: 1px solid #eee; font-weight: 600; color: #333;">文件大小</th>
-      <td style="padding: 10px; border: 1px solid #eee; color: #495057;">{{ size }}</td>
-    </tr>
-    <tr style="background-color: #f8f9fa;">
-      <th style="padding: 10px; text-align: left; border: 1px solid #eee; font-weight: 600; color: #333;">发布日期</th>
-      <td style="padding: 10px; border: 1px solid #eee; color: #495057;">{{ pubDate }}</td>
-    </tr>
-    <tr>
-      <th style="padding: 10px; text-align: left; border: 1px solid #eee; font-weight: 600; color: #333;">标签</th>
-      <td style="padding: 10px; border: 1px solid #eee; color: #495057;">
-        {{ if tags.length > 0 }}
-          {{ each tags tag }}
-            <span style="background: #e9ecef; padding: 4px 8px; border-radius: 4px; margin-right: 6px; display: inline-block; margin-bottom: 4px;">{{ tag }}</span>
-          {{ /each }}
-        {{ else }}
-          <span style="color: #6c757d;">无标签</span>
-        {{ /if }}
-      </td>
-    </tr>
-    <tr style="background-color: #f8f9fa;">
-      <th style="padding: 10px; text-align: left; border: 1px solid #eee; font-weight: 600; color: #333;">Torrent下载</th>
-      <td style="padding: 10px; border: 1px solid #eee;">
-        {{ if torrentLink }}
-          <a href="{{ torrentLink }}" style="color: #28a745; text-decoration: none; font-weight: 500; display: inline-flex; align-items: center;" target="_blank">
-            <i class="fa fa-download" style="margin-right: 6px;"></i> 点击下载.torrent
-          </a>
-        {{ else }}
-          <span style="color: #6c757d;">无Torrent链接</span>
-        {{ /if }}
-      </td>
-    </tr>
-    <tr>
-      <th style="padding: 10px; text-align: left; border: 1px solid #eee; font-weight: 600; color: #333;">磁力链接</th>
-      <td style="padding: 10px; border: 1px solid #eee;">
-        {{ if magnet }}
-          <a href="{{ magnet }}" style="color: #dc3545; text-decoration: none; font-weight: 500; display: inline-flex; align-items: center;" target="_blank">
-            <i class="fa fa-magnet" style="margin-right: 6px;"></i> 点击复制磁力链接
-          </a>
-        {{ else }}
-          <span style="color: #6c757d;">无磁力链接</span>
-        {{ /if }}
-      </td>
-    </tr>
-  </tbody>
-</table>
+<div style="margin-bottom:10px;">
+    <strong>资源信息：</strong><br>
+    ID：{{ videoId }}<br>
+    大小：{{ size }}<br>
+    日期：{{ pubDate }}<br>
+    标签：{{ tags.join(', ') || '无' }}
+</div>
+
+<div style="margin:15px 0;padding:10px;background:#f5f5f5;border-radius:5px;">
+    {{ if magnet }}
+        <div style="margin-bottom:8px;">
+            <strong>磁力链接：</strong><br>
+            <a href="{{ magnet }}" style="color:#dc3545;text-decoration:none;word-break:break-all;">{{ magnet.replace(/&amp;/g, '&') }}</a>
+        </div>
+    {{ /if }}
+    {{ if torrentLink }}
+        <div>
+            <strong>Torrent下载：</strong><br>
+            <a href="{{ torrentLink }}" style="color:#28a745;text-decoration:none;">点击下载.torrent文件</a>
+        </div>
+    {{ /if }}
+</div>
 
 {{ if screenshots.length > 0 }}
-<div style="margin-top: 25px;">
-  <h4 style="margin-bottom: 12px; font-size: 16px; color: #333; font-weight: 600;">影片截图（点击查看原图）：</h4>
-  <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;">
-    {{ each screenshots screenshot idx }}
-      <a target="_blank" href="{{ screenshot.originalUrl }}" 
-         style="display: block; border: 1px solid #eee; border-radius: 6px; overflow: hidden; transition: border-color 0.3s;">
-        <!-- 优先使用无随机前缀的直链，失败则切换到原始链接，再失败显示占位图 -->
-        <img 
-          src="{{ screenshot.directUrl }}" 
-          alt="{{ screenshot.alt }}" 
-          title="{{ screenshot.alt }}"
-          style="width: 100%; height: 120px; object-fit: cover; display: block;"
-          referrerpolicy="no-referrer"
-          onerror="this.onerror=null; if(this.src !== '{{ screenshot.originalUrl }}') { this.src='{{ screenshot.originalUrl }}'; } else { this.src='https://via.placeholder.com/180x120?text=截图无法显示'; }"
-        >
-      </a>
+<div style="margin-top:15px;">
+    <strong>影片截图：</strong><br>
+    {{ each screenshots screenshot }}
+        <img src="{{ screenshot.directUrl }}" 
+             alt="{{ screenshot.alt }}" 
+             style="max-width:100%;margin:5px 0;border-radius:4px;" 
+             referrerpolicy="no-referrer" 
+             onerror="this.src='{{ screenshot.originalUrl }}'"><br>
+        <small><a href="{{ screenshot.directUrl }}" target="_blank" style="color:#666;">{{ screenshot.alt }}原图</a></small><br>
     {{ /each }}
-  </div>
-</div>
-{{ else }}
-<div style="margin-top: 25px; padding: 12px; background: #f8f9fa; border-radius: 6px; color: #6c757d; border: 1px solid #eee;">
-  暂无影片截图
 </div>
 {{ /if }}
