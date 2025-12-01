@@ -4,8 +4,6 @@ import ofetch from '@/utils/ofetch';
 import { load } from 'cheerio';
 import timezone from '@/utils/timezone';
 import { parseDate } from '@/utils/parse-date';
-import { art } from '@/utils/render';
-import path from 'node:path';
 
 export const route: Route = {
     path: '/:id?',
@@ -66,148 +64,156 @@ async function handler(ctx) {
     const rootUrl = 'https://hjd2048.com';
 
     try {
-        // ========== 1. 空值保护：获取域名信息 ==========
+        // 1. 获取域名信息（带缓存）
         const domainInfo = (await cache.tryGet('2048:domainInfo', async () => {
             const response = await ofetch('https://2048.info');
             const $ = load(response);
             const onclickValue = $('.button').first().attr('onclick') || '';
             const matchResult = onclickValue.match(/window\.open\('([^']+)'/);
-            const targetUrl = matchResult?.[1] || rootUrl; // 匹配失败时用默认值
-            
-            return { url: targetUrl };
+            return { url: matchResult?.[1] || rootUrl };
         })) as { url: string };
 
-        // ========== 2. 空值保护：获取重定向URL和safeId ==========
+        // 2. 获取重定向URL和safeId
         const redirectResponse = await ofetch.raw(domainInfo.url);
         const redirectUrl = redirectResponse.url || rootUrl;
         const currentUrl = `${redirectUrl}thread.php?fid-${id}.html`;
         
-        const redirectPageContent = load(redirectResponse._data || '');
-        const scriptText = redirectPageContent('script').text() || '';
+        const redirectPage = load(redirectResponse._data || '');
+        const scriptText = redirectPage('script').text() || '';
         const safeIdMatch = scriptText.match(/var safeid='(.*?)',/);
-        const safeId = safeIdMatch?.[1] || ''; // safeId为空时设为字符串
+        const safeId = safeIdMatch?.[1] || '';
 
-        // ========== 3. 空值保护：请求列表页 ==========
-        const response = await ofetch.raw(currentUrl, {
-            headers: {
-                cookie: `_safe=${safeId}`,
-            },
+        // 3. 请求列表页
+        const listResponse = await ofetch.raw(currentUrl, {
+            headers: { cookie: `_safe=${safeId}` },
         });
-        const $ = load(response._data || '');
+        const $list = load(listResponse._data || '');
 
-        $('#shortcut').remove();
-        $('tr[onmouseover="this.className=\'tr3 t_two\'"]').remove();
+        // 清理冗余节点
+        $list('#shortcut').remove();
+        $list('tr[onmouseover="this.className=\'tr3 t_two\'"]').remove();
 
-        // ========== 4. 空值保护：处理列表项 ==========
-        const list = $('#ajaxtable tbody .tr2')
+        // 4. 解析列表项
+        const list = $list('#ajaxtable tbody .tr2')
             .last()
             .nextAll('.tr3')
             .toArray()
             .map((item) => {
-                const $item = $(item);
+                const $item = $list(item);
                 const $subject = $item.find('a.subject');
-                const href = $subject.attr('href') || ''; // href为空时设为字符串
-                const title = $subject.text() || '未知标题';
-                
-                // 拼接链接时避免null/undefined
+                const href = $subject.attr('href') || '';
+                const title = $subject.text().trim() || '未知标题';
                 const currentHost = redirectUrl ? `https://${new URL(redirectUrl).host}` : rootUrl;
                 const link = href ? `${currentHost}/${href}` : currentHost;
                 const guid = href ? `${rootUrl}/2048/${href}` : `${rootUrl}/2048/${id}`;
 
-                return {
-                    title,
-                    link,
-                    guid,
-                };
+                return { title, link, guid };
             })
-            .filter((item) => !item.link.includes('undefined')); // 过滤无效链接
+            .filter((item) => !item.link.includes('undefined') && item.title);
 
-        // ========== 5. 空值保护：处理详情页 ==========
+        // 5. 解析详情页（核心：提取磁力+简化描述+配置Enclosure）
         const items = await Promise.all(
-            list.map((item) =>
-                cache.tryGet(item.guid, async () => {
-                    const detailResponse = await ofetch(item.link, {
-                        headers: {
-                            cookie: `_safe=${safeId}`,
-                        },
-                    });
-                    const content = load(detailResponse || '');
+            list.map(async (item) => {
+                const detailKey = `2048:detail:${item.guid}`;
+                const cachedDetail = await cache.get(detailKey);
+                
+                if (cachedDetail) return JSON.parse(cachedDetail);
 
-                    content('.ads, .tips').remove();
+                // 请求详情页
+                const detailResponse = await ofetch(item.link, {
+                    headers: { cookie: `_safe=${safeId}` },
+                });
+                const $detail = load(detailResponse || '');
 
-                    // 处理图片时的空值保护
-                    content('ignore_js_op').each(function () {
-                        const $this = content(this);
-                        const $img = $this.find('img');
-                        const originalSrc = $img.attr('data-original') || $img.attr('src') || '';
-                        if (originalSrc) {
-                            $this.replaceWith(`<img src="${originalSrc}">`);
-                        } else {
-                            $this.remove(); // 无图片时移除节点
-                        }
-                    });
+                // 清理广告和冗余节点
+                $detail('.ads, .tips, script, style').remove();
+                $detail('div[id^="container-"]').remove();
 
-                    // 提取信息时的空值保护
-                    item.author = content('.fl.black').first().text() || '未知作者';
-                    const pubDateTitle = content('span.fl.gray').first().attr('title') || '';
-                    item.pubDate = pubDateTitle ? timezone(parseDate(pubDateTitle), +8) : new Date();
+                // ========== 提取核心信息 ==========
+                // 5.1 提取磁力链接
+                const magnetText = $detail('textarea.magnet-text').text().trim() || '';
+                const escapedMagnet = magnetText.replace(/&/g, '&amp;');
 
-                    // 处理下载链接时的空值保护
-                    const downloadLink = content('#read_tpc').first().find('a').last();
-                    const copyLink = content('#copytext')?.first()?.text() || '';
+                // 5.2 提取影片信息
+                const content = $detail('#conttpc, .tpc_content').first();
+                const getInfo = (key) => {
+                    const elem = content.find(`:contains("${key}")`).first();
+                    return elem.text().replace(key, '').trim() || '未知';
+                };
+                const name = getInfo('影片名称');
+                const format = getInfo('影片格式') || getInfo('文件格式');
+                const size = getInfo('影片大小');
+                const duration = getInfo('影片时间');
+                const desc = getInfo('影片说明') || getInfo('文件说明');
 
-                    if (downloadLink?.text()?.startsWith('http')) {
-                        try {
-                            const torrentUrl = downloadLink.text();
-                            if (/bt\.azvmw\.com$/.test(new URL(torrentUrl).hostname)) {
-                                const torrentResponse = await ofetch(torrentUrl);
-                                const torrent = load(torrentResponse || '');
+                // 5.3 提取截图（简化图片标签）
+                const screenshots = content.find('img[referrerpolicy="no-referrer"]')
+                    .map((_, img) => {
+                        const src = $detail(img).attr('src') || $detail(img).attr('ess-data') || '';
+                        return src ? `<img src="${src}" referrerpolicy="no-referrer" style="max-width:100%;margin:5px 0;">` : '';
+                    })
+                    .get()
+                    .filter(Boolean);
 
-                                item.enclosure_type = 'application/x-bittorrent';
-                                const ahref = torrent('.uk-button').last().attr('href') || '';
-                                item.enclosure_url = ahref.startsWith('http') ? ahref : `https://bt.azvmw.com/${ahref}`;
+                // 5.4 计算Enclosure长度（字节）
+                const sizeNum = size.match(/(\d+\.?\d*)/)?.[0] || '0';
+                const unit = size.includes('G') ? 1024 * 1024 * 1024 : 
+                             size.includes('M') ? 1024 * 1024 : 1024;
+                const enclosureLength = (parseFloat(sizeNum) * unit).toString();
 
-                                const magnet = torrent('.uk-button').first().attr('href') || '';
-                                downloadLink.replaceWith(
-                                    art(path.join(__dirname, 'templates/download.art'), {
-                                        magnet,
-                                        torrent: item.enclosure_url,
-                                    })
-                                );
-                            }
-                        } catch (e) {
-                            // 异常时跳过，避免中断流程
-                            console.error('处理Torrent链接失败:', e);
-                        }
-                    } else if (copyLink.startsWith('magnet')) {
-                        item.enclosure_url = copyLink.replace(/&/g, '&amp;'); // 转义时检查copyLink非空
-                        item.enclosure_type = 'x-scheme-handler/magnet';
-                    }
+                // 5.5 简化Description（Folo友好）
+                const simplifiedDesc = `
+                    <div>
+                        <strong>影片名称：</strong>${name}<br>
+                        <strong>文件格式：</strong>${format}<br>
+                        <strong>影片大小：</strong>${size}<br>
+                        ${duration ? `<strong>影片时长：</strong>${duration}<br>` : ''}
+                        <strong>影片说明：</strong>${desc}<br>
+                        <strong>影片截图：</strong><br>${screenshots.join('<br>')}<br>
+                        ${magnetText ? `<strong>磁力链接：</strong><br><a href="${magnetText}" style="color:#dc3545;">${magnetText}</a>` : ''}
+                    </div>
+                `.replace(/\n/g, '').replace(/\s+/g, ' ').trim();
 
-                    // 处理隐藏图片时的空值保护
-                    const desp = content('#read_tpc').first();
-                    content('.showhide img').each(function () {
-                        const src = content(this).attr('src') || '';
-                        if (src) {
-                            desp.append(`<br><img style="max-width: 100%;" src="${src}">`);
-                        }
-                    });
+                // 5.6 作者和发布时间
+                const author = $detail('.fl.black').first().text().trim() || '匿名';
+                const pubDateTitle = $detail('span.fl.gray').first().attr('title') || '';
+                const pubDate = pubDateTitle ? timezone(parseDate(pubDateTitle), +8) : new Date();
 
-                    item.description = desp.html() || '无内容';
-                    return item;
-                })
-            )
+                // 构造最终Item
+                const finalItem = {
+                    title: item.title,
+                    link: item.link,
+                    guid: item.guid,
+                    author,
+                    pubDate,
+                    description: simplifiedDesc,
+                    enclosure: magnetText ? {
+                        url: escapedMagnet,
+                        type: 'x-scheme-handler/magnet',
+                        length: enclosureLength,
+                    } : undefined,
+                    enclosure_url: escapedMagnet,
+                    enclosure_type: 'x-scheme-handler/magnet',
+                };
+
+                // 缓存详情页数据（1小时）
+                await cache.set(detailKey, JSON.stringify(finalItem), 3600);
+                return finalItem;
+            })
         );
 
-        // ========== 6. 空值保护：生成Feed标题 ==========
-        const breadCrumbText = $('#main #breadCrumb a').last().text() || '2048核基地';
+        // 6. 生成Feed标题
+        const breadCrumb = $list('#main #breadCrumb a').last().text().trim() || '最新资源';
+        const feedTitle = `2048核基地 - ${breadCrumb}`;
+
         return {
-            title: `${breadCrumbText} - 2048核基地`,
+            title: feedTitle,
             link: currentUrl,
             item: items,
         };
+
     } catch (error) {
-        console.error('2048 RSSHub报错:', error);
+        console.error('2048 RSSHub Error:', error);
         ctx.status = 500;
         return {
             title: '2048核基地 - 订阅失败',
