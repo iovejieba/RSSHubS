@@ -23,9 +23,9 @@ export const route: Route = {
 - 随机资源：\`/javbee/random\`
 
 ### 功能说明
-1. **Folo完全兼容**：自动生成合规pubDate，解决时间缺失问题
+1. **Folo完全兼容**：补充enclosure字段，修复pubDate格式
 2. **全功能保留**：截图预览、磁力/Torrent下载、标签解析
-3. **稳定订阅**：匹配141PPV的字段规范`,
+3. **严格匹配141PPV结构**：确保所有核心字段存在`,
     features: {
         nsfw: true,
     },
@@ -33,7 +33,6 @@ export const route: Route = {
 
 // 生成RFC 822格式时间（解决pubDate缺失）
 const generateRFC822Date = (uniqueKey: string) => {
-    // 基于唯一标识生成固定偏移时间，避免重复
     let hash = 0;
     for (let i = 0; i < uniqueKey.length; i++) {
         hash = uniqueKey.charCodeAt(i) + ((hash << 5) - hash);
@@ -41,8 +40,7 @@ const generateRFC822Date = (uniqueKey: string) => {
     const baseDate = new Date('2025-01-01T00:00:00Z');
     const offset = Math.abs(hash) % (365 * 24 * 60 * 60 * 1000); // 一年内随机偏移
     const finalDate = new Date(baseDate.getTime() + offset);
-    // 转为RFC 822格式（如：Thu, 04 Dec 2025 12:30:00 GMT）
-    return finalDate.toUTCString().replace(/UTC/, 'GMT');
+    return finalDate.toUTCString().replace(/UTC/, 'GMT'); // 确保RFC 822格式
 };
 
 async function handler(ctx) {
@@ -71,50 +69,50 @@ async function handler(ctx) {
 
     const $ = load(response.data);
 
-    // 解析Item
+    // 解析Item（确保包含enclosure字段）
     const items = $('.card .columns')
         .toArray()
         .map((itemEl) => {
             const item = $(itemEl);
             const titleEl = item.find('.title.is-4.is-spaced a');
             
-            // 提取基础信息（简化Title，匹配141PPV格式）
+            // 基础信息提取
             const rawVideoId = titleEl.text().trim() || `未知ID-${Date.now()}`;
-            const videoId = rawVideoId.replace(/\[FHD\]|\[HD\]|\s+/g, '').split(' ')[0] || rawVideoId; // 提取核心ID
+            const videoId = rawVideoId.replace(/\[FHD\]|\[FHDC\]|\s+/g, '').split(' ')[0] || rawVideoId;
             const size = item.find('.title.is-4.is-spaced span.is-size-6').text().trim() || '未知大小';
             const itemLink = titleEl.attr('href') ? new URL(titleEl.attr('href'), rootUrl).href : currentUrl;
 
-            // 解析发布日期（优先用页面时间，无则生成）
+            // 发布日期（优先解析，无则生成）
             let pubDate;
             const dateLink = item.find('.subtitle a').attr('href');
             if (dateLink?.includes('/date/')) {
                 const extractedDate = dateLink.split('/date/').pop();
                 if (/^\d{4}-\d{2}-\d{2}$/.test(extractedDate)) {
-                    pubDate = parseDate(extractedDate, 'YYYY-MM-DD').toUTCString().replace(/UTC/, 'GMT');
+                    const parsedDate = parseDate(extractedDate, 'YYYY-MM-DD');
+                    pubDate = parsedDate.toUTCString().replace(/UTC/, 'GMT');
                 }
             }
-            // 无真实时间则生成固定偏移的RFC 822时间
             if (!pubDate) {
                 pubDate = generateRFC822Date(`${videoId}-${itemLink}`);
             }
 
-            // 解析标签
-            const tags = item.find('.tags .tag')
-                .toArray()
-                .map(t => $(t).text().trim())
-                .filter(Boolean);
+            // 下载链接（磁力/Torrent）
+            const magnetRaw = item.find('a[title="Download Magnet"]').attr('href') || '';
+            const torrentLinkRaw = item.find('a[title="Download .torrent"]').attr('href') || '';
+            const downloadUrl = magnetRaw || torrentLinkRaw;
 
             // 封面图
             const imageEl = item.find('img.image.lazy');
             const coverImageUrl = imageEl.attr('data-src') || imageEl.attr('src') || '';
             const coverImage = coverImageUrl ? new URL(coverImageUrl, rootUrl).href : '';
 
-            // 下载链接
-            const magnetRaw = item.find('a[title="Download Magnet"]').attr('href') || '';
-            const torrentLinkRaw = item.find('a[title="Download .torrent"]').attr('href') || '';
-            const downloadUrl = magnetRaw || torrentLinkRaw;
+            // 标签解析
+            const tags = item.find('.tags .tag')
+                .toArray()
+                .map(t => $(t).text().trim())
+                .filter(Boolean);
 
-            // 截图解析（保留原有逻辑）
+            // 截图解析
             const screenshots = [];
             item.find('.images-description ul li a.img-items').each((_, el) => {
                 const originalUrl = $(el).text().trim().replace(/\s+/g, '');
@@ -131,30 +129,33 @@ async function handler(ctx) {
                 }
             });
 
-            // 渲染描述内容
+            // 渲染描述
             const description = art(path.join(__dirname, 'templates/description.art'), {
                 coverImage,
-                videoId: rawVideoId, // 保留完整ID用于展示
+                videoId: rawVideoId,
                 size,
-                pubDateStr: pubDate.split(' GMT')[0], // 仅展示日期部分
+                pubDateStr: pubDate.split(' GMT')[0],
                 tags,
                 magnetRaw,
                 torrentLinkRaw,
                 screenshots,
             });
 
-            // Folo兼容的字段结构（匹配141PPV）
+            // ========== 关键：确保enclosure字段存在（匹配141PPV格式） ==========
+            const enclosure = {
+                url: downloadUrl,
+                type: 'application/x-bittorrent', // 固定类型，Folo识别
+            };
+
             return {
-                title: `${videoId} ${size}`, // 简洁Title，避免特殊字符
-                pubDate: pubDate, // 强制RFC 822格式
+                title: `${videoId} ${size}`, // 简洁Title
                 link: itemLink,
+                guid: `${itemLink}#${videoId}`, // 唯一标识
+                pubDate: pubDate, // RFC 822格式
                 description: description,
                 author: 'JavBee',
                 category: tags,
-                enclosure: {
-                    url: downloadUrl,
-                    type: 'application/x-bittorrent',
-                },
+                enclosure: enclosure, // 必须包含的字段
             };
         });
 
@@ -165,6 +166,10 @@ async function handler(ctx) {
     return {
         title: feedTitle,
         link: currentUrl,
+        description: `JavBee ${type}资源订阅（Folo专用）`,
+        language: 'en',
+        lastBuildDate: new Date().toUTCString().replace(/UTC/, 'GMT'),
+        ttl: 5,
         item: items,
     };
 }
