@@ -1,50 +1,120 @@
+<!-- ===== 封面图 ===== -->
 {{ if coverImage }}
-<img src="{{ coverImage }}" style="max-width: 100%; height: auto; border-radius: 4px; margin-bottom: 12px;" alt="封面" referrerpolicy="no-referrer">
-{{ /if }}
-
-<div style="background: #f5f5f5; padding: 12px; border-radius: 4px; margin: 12px 0; font-size: 14px;">
-    <div><strong>ID:</strong> {{ id }}</div>
-    <div><strong>大小:</strong> {{ size }}</div>
-    <div><strong>发布日期:</strong> {{ pubDate }}</div>
-</div>
-
-{{ if tags && tags.length > 0 }}
-<div style="margin-bottom: 12px;">
-    <strong>标签:</strong>
-    {{ each tags tag }}
-    <span style="background: #e0e0e0; padding: 2px 6px; margin: 0 4px 4px 0; border-radius: 3px; display: inline-block; font-size: 13px;">{{ tag }}</span>
-    {{ /each }}
+<div style="text-align:center;margin-bottom:14px">
+    <img src="{{ coverImage }}" 
+        alt="封面" 
+        style="max-width:100%;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.18)" 
+        referrerpolicy="no-referrer">
 </div>
 {{ /if }}
 
-{{ if screenshots && screenshots.length > 0 }}
-<div style="margin-bottom: 12px;">
-    <strong>截图预览:</strong>
-    <div style="margin-top: 6px; display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 4px;">
-        {{ each screenshots screenshot }}
-        <a href="{{ screenshot.directUrl }}" rel="noopener noreferrer">
-            <img src="{{ screenshot.directUrl }}" alt="{{ screenshot.alt }}" style="width: 100%; height: auto; border-radius: 3px;" referrerpolicy="no-referrer">
+<!-- ===== 基本信息卡片 ===== -->
+<div style="
+    background:#fafafa;
+    padding:14px;
+    border-radius:6px;
+    border:1px solid #e5e5e5;
+    margin:16px 0;
+    font-size:14px;
+    line-height:1.6;
+">
+    <div><strong>ID：</strong>{{ id }}</div>
+    <div><strong>大小：</strong>{{ size }}</div>
+    <div><strong>发布日期：</strong>{{ pubDate }}</div>
+
+    {{ if tags && tags.length }}
+    <div style="margin-top:6px">
+        <strong>标签：</strong>
+        {{ each tags }}
+            <span style="
+                display:inline-block;
+                background:#eef4ff;
+                color:#3367d6;
+                padding:2px 6px;
+                margin-right:4px;
+                margin-bottom:4px;
+                border-radius:3px;
+                font-size:12px;
+            ">{{ $value }}</span>
+        {{ /each }}
+    </div>
+    {{ /if }}
+</div>
+
+<!-- ===== 截图网格 ===== -->
+{{ if screenshots && screenshots.length }}
+<div style="margin-bottom:12px">
+    <strong style="font-size:15px">截图预览：</strong>
+    <div style="
+        margin-top:8px;
+        display:grid;
+        grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+        gap:6px;
+    ">
+        {{ each screenshots }}
+        <a href="{{ $value.directUrl }}" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            style="display:block">
+            <img src="{{ $value.directUrl }}" 
+                alt="{{ $value.alt }}"
+                style="width:100%;height:auto;border-radius:4px"
+                referrerpolicy="no-referrer">
         </a>
         {{ /each }}
     </div>
 </div>
 {{ /if }}
 
-<div style="margin-top: 16px; padding: 12px; background: #e8f4fd; border-radius: 4px;">
-    <h4 style="margin-top: 0; margin-bottom: 8px; font-size: 15px;">下载链接</h4>
-    {{ if magnetRaw }}
-    <div style="margin-bottom: 8px;">
-        <strong>磁力链接:</strong>
-        <div style="background: white; padding: 8px; border-radius: 3px; margin-top: 4px; font-family: monospace; font-size: 12px; overflow-x: auto; word-break: break-all;">
+<!-- ===== 下载区域 ===== -->
+<div style="
+    margin-top:18px;
+    padding:14px;
+    background:#f1f7ff;
+    border-radius:6px;
+    border:1px solid #d7e6ff;
+">
+    <h4 style="margin:0 0 10px;font-size:16px;color:#1a4fbf">下载链接</h4>
+
+    <!-- 磁力链接 -->
+    <div style="margin-bottom:12px">
+        <strong>磁力链接：</strong>
+        <div style="
+            background:#fff;
+            padding:8px;
+            border-radius:4px;
+            margin-top:6px;
+            font-family:monospace;
+            font-size:12px;
+            line-height:1.45;
+            border:1px solid #e0e0e0;
+            overflow-x:auto;
+            word-break:break-all;
+        ">
             {{ magnetRaw }}
         </div>
-        <div style="margin-top: 6px; color: #2196f3; font-size: 13px;">长按/右键复制链接</div>
+        <div style="font-size:12px;color:#327bf6;margin-top:6px">
+            长按 / 右键复制链接
+        </div>
     </div>
-    {{ /if }}
+
+    <!-- Torrent 文件 -->
     {{ if torrentLinkRaw }}
     <div>
-        <strong>Torrent文件:</strong>
-        <a href="{{ torrentLinkRaw }}" rel="noopener noreferrer" style="display: inline-block; margin-top: 4px; padding: 4px 12px; background: #4caf50; color: white; text-decoration: none; border-radius: 3px; font-size: 13px;">
+        <strong>.torrent 文件：</strong>
+        <a href="{{ torrentLinkRaw }}"
+            style="
+                display:inline-block;
+                margin-top:6px;
+                padding:6px 14px;
+                background:#34a853;
+                color:#fff;
+                text-decoration:none;
+                border-radius:4px;
+                font-size:13px;
+            "
+            rel="noopener noreferrer"
+            target="_blank">
             下载 .torrent 文件
         </a>
     </div>
