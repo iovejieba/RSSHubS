@@ -9,7 +9,7 @@ import path from 'node:path';
 export const route: Route = {
     path: '/:type/:keyword{.*}?',
     categories: ['multimedia'],
-    name: 'JavBee 通用订阅（Folo兼容优化版）',
+    name: 'JavBee 通用订阅（Folo完全兼容版）',
     maintainers: ['cgkings', 'nczitzk'],
     parameters: { 
         type: '类型，可选值：new(最新)、popular(热门)、random(随机)、tag(指定标签)、date(指定日期)', 
@@ -24,15 +24,47 @@ export const route: Route = {
 - 随机资源：\`/javbee/random\`
 
 ### 功能说明
-1. **Folo兼容优先**：优先使用.torrent种子文件作为enclosure（与141方案一致）
-2. **双链接支持**：描述中包含磁力链接，enclosure使用种子文件
-3. **智能回退**：无种子文件时回退到磁力链接
-4. **格式标准化**：完全遵循原141方案的enclosure格式
-5. **全客户端兼容**：Folo可一键添加，其他客户端支持复制`,
+1. **完全兼容Folo**：严格按照Folo的RSS解析规范实现
+2. **标准enclosure格式**：使用标准的enclosure对象，包含url、type和length
+3. **自动文件大小转换**：将显示大小转换为字节数
+4. **双链接支持**：描述中包含磁力链接，enclosure使用.torrent文件
+5. **错误处理**：完整的异常捕获和友好错误提示`,
     features: {
         nsfw: true,
     },
 };
+
+// 辅助函数：将文件大小字符串转换为字节数
+function parseSizeToBytes(sizeStr) {
+    if (!sizeStr) return 0;
+    
+    // 清理字符串：移除括号和多余空格
+    const cleanStr = sizeStr.replace(/[()]/g, '').trim().toUpperCase();
+    
+    // 匹配数字和单位
+    const match = cleanStr.match(/^([\d.]+)\s*([KMG]?B?)$/);
+    if (!match) return 0;
+    
+    const value = parseFloat(match[1]);
+    const unit = match[2];
+    
+    switch (unit) {
+        case 'KB':
+        case 'K':
+            return Math.round(value * 1024);
+        case 'MB':
+        case 'M':
+            return Math.round(value * 1024 * 1024);
+        case 'GB':
+        case 'G':
+            return Math.round(value * 1024 * 1024 * 1024);
+        case 'TB':
+        case 'T':
+            return Math.round(value * 1024 * 1024 * 1024 * 1024);
+        default:
+            return Math.round(value); // 假设默认是字节
+    }
+}
 
 async function handler(ctx) {
     let currentUrl;
@@ -95,7 +127,7 @@ async function handler(ctx) {
                     .map((t) => $(t).text().trim())
                     .filter(tag => tag);
 
-                // 5. 提取下载链接（关键：优先.torrent，其次磁力）
+                // 5. 提取下载链接
                 const torrentLinkRaw = item.find('a[title="Download .torrent"]').attr('href') || '';
                 const magnetRaw = item.find('a[title="Download Magnet"]').attr('href') || '';
                 
@@ -135,26 +167,32 @@ async function handler(ctx) {
                     }
                 });
 
-                // 8. 关键：按原141方案设置enclosure（优先.torrent）
-                let enclosureUrl = '';
-                let enclosureType = '';
+                // 8. 根据Folo规范设置enclosure（关键修改）
+                let enclosure = null;
                 
-                // 策略：优先使用.torrent种子文件
+                // 策略：优先使用.torrent种子文件（与141方案一致）
                 if (torrentLinkRaw) {
-                    enclosureUrl = torrentLinkRaw;
-                    enclosureType = 'application/x-bittorrent';
+                    enclosure = {
+                        url: torrentLinkRaw,
+                        type: 'application/x-bittorrent',
+                        length: parseSizeToBytes(size),
+                    };
                 } 
                 // 备选：使用磁力链接
                 else if (magnetRaw) {
-                    enclosureUrl = magnetRaw;
-                    enclosureType = 'application/x-bittorrent';
+                    enclosure = {
+                        url: magnetRaw,
+                        type: 'application/x-bittorrent',
+                        length: parseSizeToBytes(size),
+                    };
                 }
 
-                // 9. 返回Item（完全遵循原141格式）
+                // 9. 返回Item（完全遵循Folo的RSS解析规范）
                 return {
-                    title: `${videoId} ${size}`, // 格式：ID 大小
+                    title: `${videoId} ${size}`,
                     pubDate: parseDate(pubDate, 'YYYY-MM-DD'),
                     link: itemLink,
+                    guid: `${itemLink}#${videoId}`, // 确保guid唯一
                     description: art(path.join(__dirname, 'templates/description.art'), {
                         image: coverImageUrl,
                         id: videoId,
@@ -168,8 +206,7 @@ async function handler(ctx) {
                     }),
                     author: tags.join(', '),
                     category: tags,
-                    enclosure_type: enclosureType,
-                    enclosure_url: enclosureUrl,
+                    enclosure: enclosure, // 直接设置enclosure对象
                 };
             });
 
