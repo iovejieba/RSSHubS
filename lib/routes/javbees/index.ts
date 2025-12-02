@@ -24,10 +24,9 @@ export const route: Route = {
 - 随机资源：\`/javbee/random\`
 
 ### 功能说明
-1. **标准enclosure格式**：遵循RSSHub官方规范
-2. **Folo完全兼容**：确保enclosure标签被正确生成
-3. **全客户端支持**：磁力链接直接可识别
-4. **双重保障**：description中也有复制按钮`,
+1. **Folo深度兼容**：严格匹配Folo的Feed/Entry数据模型
+2. **标准RSS字段**：遵循RSSHub规范+Folo解析逻辑
+3. **附件/媒体正确映射**：确保磁力链接/封面图被识别`,
     features: {
         nsfw: true,
     },
@@ -66,7 +65,8 @@ async function handler(ctx) {
                 item = $(item);
 
                 const titleEl = item.find('.title.is-4.is-spaced a');
-                const videoId = titleEl.text().trim() || '未知ID';
+                // 【改动1】确保GUID唯一（Folo要求guid全局唯一）
+                const videoId = titleEl.text().trim() || `未知ID-${Date.now()}-${Math.random().toString(36).slice(2)}`;
                 const size = item.find('.title.is-4.is-spaced span.is-size-6').text().trim() || '未知大小';
 
                 let pubDate;
@@ -87,12 +87,14 @@ async function handler(ctx) {
                 // 提取原始下载链接
                 const magnetRaw = item.find('a[title="Download Magnet"]').attr('href') || '';
                 const torrentLinkRaw = item.find('a[title="Download .torrent"]').attr('href') || '';
+                // 【改动2】Folo的Entry.url对应RSS的link字段
                 const itemLink = titleEl.attr('href') ? new URL(titleEl.attr('href'), rootUrl).href : currentUrl;
 
                 const imageEl = item.find('img.image.lazy');
                 const imageSrc = imageEl.attr('data-src') || imageEl.attr('src') || '';
                 const coverImageUrl = imageSrc ? new URL(imageSrc, rootUrl).href : '';
 
+                // 保留影视截图原有逻辑
                 const screenshots = [];
                 item.find('.images-description ul li a.img-items').each((_, el) => {
                     const $a = $(el);
@@ -121,83 +123,108 @@ async function handler(ctx) {
                     }
                 });
 
-                // ========== 【关键修复】使用RSSHub标准enclosure格式 ==========
-                // 策略：优先使用磁力链接（Folo支持磁力链接enclosure）
+                // ========== 【关键修复】适配Folo的attachments解析逻辑 ==========
                 const downloadUrl = magnetRaw || torrentLinkRaw;
                 let enclosure = null;
+                let attachments = []; // Folo的attachments是数组
                 if (downloadUrl) {
-                    // 计算文件大小（假设1 GiB = 1073741824 字节）
+                    // 【改动3】size_in_bytes必须是数字（Folo解析要求）
                     const sizeMatch = size.match(/(\d+(\.\d+)?)\s*(GiB|MiB|KiB)/i);
-                    let lengthBytes = '0';
+                    let sizeInBytes = 0;
                     if (sizeMatch) {
                         const num = parseFloat(sizeMatch[1]);
                         const unit = sizeMatch[3].toLowerCase();
                         if (unit === 'gib') {
-                            lengthBytes = Math.round(num * 1073741824).toString();
+                            sizeInBytes = Math.round(num * 1073741824);
                         } else if (unit === 'mib') {
-                            lengthBytes = Math.round(num * 1048576).toString();
+                            sizeInBytes = Math.round(num * 1048576);
                         } else if (unit === 'kib') {
-                            lengthBytes = Math.round(num * 1024).toString();
+                            sizeInBytes = Math.round(num * 1024);
                         }
                     }
 
-                    // 判断链接类型
+                    // 【改动4】Folo的mime_type映射：magnet用专属类型，torrent用标准类型
                     const isMagnet = downloadUrl.startsWith('magnet:');
-                    const isTorrent = downloadUrl.endsWith('.torrent') || downloadUrl.includes('/torrent/');
+                    const mimeType = isMagnet 
+                        ? 'magnet/x-bittorrent' 
+                        : 'application/x-bittorrent';
 
+                    // Folo解析RSS enclosure为attachments数组（单元素）
+                    attachments = [{
+                        url: downloadUrl,
+                        mime_type: mimeType,
+                        size_in_bytes: sizeInBytes,
+                        title: `${videoId}下载链接`,
+                    }];
+
+                    // 同时保留RSS标准enclosure（Folo会自动转换为attachments）
                     enclosure = {
                         url: downloadUrl,
-                        type: isMagnet ? 'application/x-bittorrent' : 
-                              isTorrent ? 'application/x-bittorrent' : 'application/octet-stream',
-                        length: lengthBytes,
+                        type: mimeType,
+                        length: sizeInBytes,
                     };
                 }
 
-                // 返回最终的Item对象 - 使用RSSHub标准格式
+                // ========== 【改动5】适配Folo的media字段（封面图） ==========
+                let media = [];
+                if (coverImageUrl) {
+                    media = [{
+                        url: coverImageUrl,
+                        type: 'photo',
+                        preview_image_url: coverImageUrl,
+                    }];
+                }
+
+                // 渲染内容（Folo的content对应RSS的content:encoded）
+                const content = art(path.join(__dirname, 'templates/description.art'), {
+                    coverImage: coverImageUrl,
+                    videoId,
+                    size,
+                    pubDateStr: pubDate || new Date().toISOString().split('T')[0],
+                    tags,
+                    magnetRaw: magnetRaw,
+                    torrentLinkRaw: torrentLinkRaw,
+                    screenshots,
+                    hasEnclosure: !!downloadUrl,
+                    enclosureHint: downloadUrl ? '此条目包含enclosure链接，支持Folo直接下载' : '',
+                });
+
                 return {
                     title: `${videoId} ${size}`,
-                    pubDate: pubDate ? parseDate(pubDate, 'YYYY-MM-DD') : new Date(),
-                    link: itemLink,
-                    guid: `${itemLink}#${videoId}`.replace(/\s+/g, '-'),
-                    description: art(path.join(__dirname, 'templates/description.art'), {
-                        coverImage: coverImageUrl,
-                        videoId,
-                        size,
-                        pubDateStr: pubDate || '未知日期',
-                        tags,
-                        magnetRaw: magnetRaw,
-                        torrentLinkRaw: torrentLinkRaw,
-                        screenshots,
-                        // 提示用户如何使用enclosure
-                        hasEnclosure: !!downloadUrl,
-                        enclosureHint: downloadUrl ? '此条目包含enclosure链接，支持RSS客户端直接下载' : '',
-                    }),
-                    author: tags.join(', '),
-                    category: tags.length > 0 ? tags : [type],
+                    // 【改动6】Folo的publishedAt对应RSS的pubDate（必须是Date对象）
+                    pubDate: pubDate ? parseDate(pubDate) : parseDate(new Date()),
+                    link: itemLink, // Folo的Entry.url映射自RSS的link
+                    guid: `${itemLink}#${videoId}`, // 确保GUID唯一
+                    // 【改动7】Folo的content来自RSS的content:encoded/description
+                    description: content,
+                    'content:encoded': content, // 显式设置content:encoded，确保Folo识别
+                    author: 'JavBee',
+                    category: tags.length > 0 ? tags : [type], // Folo的categories映射自RSS的category数组
                     
-                    // ========== RSSHub标准enclosure字段 ==========
-                    // 主enclosure字段（必须）
+                    // RSS标准enclosure（Folo自动转为attachments）
                     enclosure: enclosure,
+                    // 【改动8】适配Folo的media字段（可选，补充封面图）
+                    'itunes:image': coverImageUrl, // Folo会从itunes:image提取media
                     
-                    // 备用enclosure字段（可选，但推荐同时设置）
-                    enclosure_url: enclosure?.url || '',
-                    enclosure_type: enclosure?.type || '',
-                    enclosure_length: enclosure?.length || '',
-                    
-                    // 兼容字段
-                    itunes_duration: enclosure?.length || '',
+                    // 兼容字段（Folo解析RSS时自动处理）
+                    attachments: attachments, // 显式设置，增强兼容性
+                    media: media,
                 };
             });
 
         const pageTitle = $('title').text().trim();
         const feedTitlePrefix = pageTitle.split('-')[0]?.trim() || type;
 
+        // ========== Feed级适配Folo的FeedModel ==========
         return {
             title: `JavBee - ${feedTitlePrefix}`,
-            link: currentUrl,
+            link: currentUrl, // Folo的Feed.siteUrl映射自RSS的link
+            description: `JavBee订阅 - ${feedTitlePrefix}。所有条目均包含标准enclosure标签，完全兼容Folo RSS。`,
+            image: `${rootUrl}/favicon.ico`, // Folo的Feed.image（可选，站点图标）
             item: items,
-            // 添加feed级别的提示
-            description: `JavBee订阅 - ${feedTitlePrefix}。所有条目均包含enclosure标签，支持Folo等RSS客户端直接下载。`,
+            // 补充Folo识别的Feed元信息
+            ttl: 60, // Feed刷新间隔（分钟）
+            language: 'zh-CN',
         };
     } catch (error) {
         return {

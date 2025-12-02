@@ -1,72 +1,56 @@
 {{ if coverImage }}
-<img src="{{ coverImage }}" style="max-width: 100%; height: auto; border-radius: 5px;" alt="封面">
+<img src="{{ coverImage }}" style="max-width: 100%; height: auto; border-radius: 4px; margin-bottom: 12px;" alt="封面">
 {{ /if }}
 
-<div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 15px 0;">
+<div style="background: #f5f5f5; padding: 12px; border-radius: 4px; margin: 12px 0; font-size: 14px;">
     <div><strong>ID:</strong> {{ videoId }}</div>
     <div><strong>大小:</strong> {{ size }}</div>
     <div><strong>发布日期:</strong> {{ pubDateStr }}</div>
 </div>
 
 {{ if tags.length > 0 }}
-<div style="margin-bottom: 15px;">
+<div style="margin-bottom: 12px;">
     <strong>标签:</strong>
     {{ each tags tag }}
-    <span style="background: #e0e0e0; padding: 3px 8px; margin: 0 5px 5px 0; border-radius: 3px; display: inline-block;">{{ tag }}</span>
+    <span style="background: #e0e0e0; padding: 2px 6px; margin: 0 4px 4px 0; border-radius: 3px; display: inline-block; font-size: 13px;">{{ tag }}</span>
     {{ /each }}
 </div>
 {{ /if }}
 
 {{ if screenshots.length > 0 }}
-<div style="margin-bottom: 15px;">
+<div style="margin-bottom: 12px;">
     <strong>截图预览:</strong>
-    <div style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;">
+    <div style="margin-top: 6px; display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 4px;">
         {{ each screenshots screenshot }}
-        <a href="{{ screenshot.directUrl }}" target="_blank" rel="noopener noreferrer">
-            <img src="{{ screenshot.directUrl }}" alt="{{ screenshot.alt }}" style="width: 120px; height: 90px; object-fit: cover; border-radius: 3px;">
+        <a href="{{ screenshot.directUrl }}" rel="noopener noreferrer">
+            <img src="{{ screenshot.directUrl }}" alt="{{ screenshot.alt }}" style="width: 100%; height: auto; border-radius: 3px;">
         </a>
         {{ /each }}
     </div>
 </div>
 {{ /if }}
 
-<div style="margin-top: 20px; padding: 15px; background: #e8f4fd; border-radius: 5px;">
-    <h4 style="margin-top: 0;">下载链接</h4>
+<div style="margin-top: 16px; padding: 12px; background: #e8f4fd; border-radius: 4px;">
+    <h4 style="margin-top: 0; margin-bottom: 8px; font-size: 15px;">下载链接</h4>
 
     {{ if magnetRaw }}
-    <div style="margin-bottom: 10px;">
+    <div style="margin-bottom: 8px;">
         <strong>磁力链接:</strong>
-        <div style="background: white; padding: 10px; border-radius: 3px; margin-top: 5px; font-family: monospace; font-size: 12px; overflow-x: auto; word-break: break-all;">
+        <div style="background: white; padding: 8px; border-radius: 3px; margin-top: 4px; font-family: monospace; font-size: 12px; overflow-x: auto; word-break: break-all;">
             {{ magnetRaw }}
         </div>
-        <button onclick="copyToClipboard('{{ magnetRaw }}')" style="margin-top: 5px; padding: 5px 15px; background: #2196f3; color: white; border: none; border-radius: 3px; cursor: pointer;">
-            复制磁力链接
-        </button>
+        <div style="margin-top: 6px; color: #2196f3; font-size: 13px;">
+            👉 长按/右键复制链接
+        </div>
     </div>
     {{ /if }}
 
     {{ if torrentLinkRaw }}
     <div>
         <strong>Torrent文件:</strong>
-        <a href="{{ torrentLinkRaw }}" target="_blank" rel="noopener noreferrer" style="display: inline-block; margin-top: 5px; padding: 5px 15px; background: #4caf50; color: white; text-decoration: none; border-radius: 3px;">
+        <a href="{{ torrentLinkRaw }}" rel="noopener noreferrer" style="display: inline-block; margin-top: 4px; padding: 4px 12px; background: #4caf50; color: white; text-decoration: none; border-radius: 3px; font-size: 13px;">
             下载 .torrent 文件
         </a>
     </div>
     {{ /if }}
 </div>
-
-<script>
-function copyToClipboard(text) {
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    document.body.appendChild(textarea);
-    textarea.select();
-    try {
-        document.execCommand('copy');
-        alert('链接已复制到剪贴板！');
-    } catch (err) {
-        alert('复制失败，请手动选中复制。');
-    }
-    document.body.removeChild(textarea);
-}
-</script>
