@@ -27,7 +27,7 @@ export const route: Route = {
 1. 自动抓取封面图、文件大小、发布日期、标签；
 2. 支持Torrent下载链接和磁力链接提取；
 3. 自动剥离文件名随机前缀，拼接100%有效图床直链；
-4. 全客户端兼容：Folo可识别磁力链接，其他RSS客户端支持点击复制。`,
+4. 全客户端兼容：Folo可识别磁力链接，其他RSS客户端支持一键复制。`,
     features: {
         nsfw: true,
     },
@@ -90,7 +90,7 @@ async function handler(ctx) {
                     .map((t) => $(t).text().trim())
                     .filter(tag => tag);
 
-                // 4. 提取下载链接（关键：分离Enclosure转义和展示用原始链接）
+                // 4. 提取下载链接
                 const magnetRaw = item.find('a[title="Download Magnet"]').attr('href') || '';
                 const torrentLinkRaw = item.find('a[title="Download .torrent"]').attr('href') || '';
                 const itemLink = titleEl.attr('href') ? new URL(titleEl.attr('href'), rootUrl).href : currentUrl;
@@ -153,9 +153,9 @@ async function handler(ctx) {
                     };
                 }
 
-                // 8. 返回Item（传递原始磁力链接到模板用于点击复制）
+                // 8. 返回Item（传递原始磁力链接到模板）
                 return {
-                    title: `${videoId} ${size}`,
+                    title: videoId, // 仅显示资源ID，避免标题过长
                     pubDate: parseDate(pubDate, 'YYYY-MM-DD'),
                     link: itemLink,
                     guid: `${itemLink}-${videoId}`.replace(/\//g, '-'),
@@ -166,7 +166,7 @@ async function handler(ctx) {
                         pubDate: pubDate || '未知日期',
                         tags,
                         magnetRaw: magnetRaw, // 原始磁力链接（用于复制）
-                        torrentLink: escapedTorrent, // Torrent链接（用于展示）
+                        torrentLink: escapedTorrent, // Torrent链接（用于下载）
                         screenshots,
                     }),
                     category: tags.length > 0 ? tags : [type],

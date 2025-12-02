@@ -1,54 +1,28 @@
+<!-- 纯文本键值对布局，模拟表格对齐 -->
+<div style="font-size:14px;line-height:2;">
+    文件大小	{{ size }}<br>
+    发布日期	{{ pubDate }}<br>
+    标签	{{ tags.length > 0 ? tags.join(', ') : '无标签' }}<br>
+    {{ if torrentLink }}Torrent下载	<a href="{{ torrentLink }}" style="color:#28a745;text-decoration:none;">点击下载.torrent</a><br>{{ /if }}
+    {{ if magnetRaw }}
+    磁力链接	<textarea id="magnet-{{ videoId }}" style="display:none;">{{ magnetRaw }}</textarea>
+    <a href="javascript:void(0);" onclick="document.getElementById('magnet-{{ videoId }}').select();document.execCommand('copy');alert('复制成功');" style="color:#dc3545;text-decoration:none;">点击复制磁力链接</a>
+    {{ /if }}
+</div>
+
+<!-- 封面图（单独展示，不干扰文本布局） -->
 {{ if coverImage }}
-<img src="{{ coverImage }}" 
-     style="max-width:100%;border-radius:6px;margin-bottom:15px;" 
-     referrerpolicy="no-referrer" 
-     alt="封面图">
-{{ /if }}
-
-<div style="margin-bottom:10px;line-height:1.6;">
-    <strong>资源ID：</strong>{{ videoId }}<br>
-    <strong>文件大小：</strong>{{ size }}<br>
-    <strong>发布日期：</strong>{{ pubDate }}<br>
-    <strong>标签：</strong>{{ tags.join(', ') || '无' }}
-</div>
-
-<!-- 磁力链接：点击复制（隐藏完整内容） -->
-{{ if magnetRaw }}
-<div style="margin:10px 0;padding:10px;background:#f0f8fb;border:1px solid #e1f5fe;border-radius:6px;">
-    <strong style="color:#0288d1;">磁力链接：</strong><br>
-    <!-- 隐藏的完整磁力链接（用于复制） -->
-    <textarea id="magnet-{{ videoId }}" style="position:absolute;left:-9999px;opacity:0;">{{ magnetRaw }}</textarea>
-    <!-- 点击复制按钮（兼容支持JS的客户端） -->
-    <a href="javascript:void(0);" 
-       onclick="document.getElementById('magnet-{{ videoId }}').select();document.execCommand('copy');alert('磁力链接复制成功！');"
-       style="display:inline-block;margin:8px 0;padding:6px 12px;background:#03a9f4;color:#fff;border-radius:4px;text-decoration:none;font-size:14px;">
-       点击复制磁力链接
-    </a>
-    <!-- 降级提示（JS禁用时） -->
-    <small style="color:#666;display:block;margin-top:4px;">
-        若按钮无效，可访问原链接获取：<a href="{{ magnetRaw }}" style="color:#0288d1;">点击跳转</a>
-    </small>
+<div style="margin-top:10px;">
+    <img src="{{ coverImage }}" style="max-width:100%;border-radius:4px;" referrerpolicy="no-referrer" alt="封面">
 </div>
 {{ /if }}
 
-<!-- Torrent链接展示 -->
-{{ if torrentLink }}
-<div style="margin:10px 0;padding:10px;background:#f5f5f5;border-radius:6px;">
-    <strong style="color:#2e7d32;">Torrent下载：</strong><br>
-    <a href="{{ torrentLink }}" style="color:#2e7d32;text-decoration:none;">点击下载.torrent文件</a>
-</div>
-{{ /if }}
-
-<!-- 截图展示（Folo友好） -->
+<!-- 截图（可选） -->
 {{ if screenshots.length > 0 }}
-<div style="margin-top:15px;">
+<div style="margin-top:10px;">
     <strong>影片截图：</strong><br>
     {{ each screenshots screenshot }}
-        <img src="{{ screenshot.directUrl }}" 
-             alt="{{ screenshot.alt }}" 
-             style="max-width:100%;margin:5px 0;border-radius:4px;" 
-             referrerpolicy="no-referrer" 
-             onerror="this.src='{{ screenshot.originalUrl }}'"><br>
+        <img src="{{ screenshot.directUrl }}" style="max-width:100%;margin:5px 0;border-radius:4px;" referrerpolicy="no-referrer" onerror="this.src='{{ screenshot.originalUrl }}'" alt="{{ screenshot.alt }}">
     {{ /each }}
 </div>
 {{ /if }}
