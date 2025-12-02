@@ -8,7 +8,7 @@
     <div><strong>发布日期:</strong> {{ pubDateStr }}</div>
 </div>
 
-{{ if tags.length > 0 }}
+{{ if tags && tags.length > 0 }} <!-- 容错：先判断tags是否存在 -->
 <div style="margin-bottom: 12px;">
     <strong>标签:</strong>
     {{ each tags tag }}
@@ -17,7 +17,7 @@
 </div>
 {{ /if }}
 
-{{ if screenshots.length > 0 }}
+{{ if screenshots && screenshots.length > 0 }} <!-- 容错：先判断screenshots是否存在 -->
 <div style="margin-bottom: 12px;">
     <strong>截图预览:</strong>
     <div style="margin-top: 6px; display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 4px;">
