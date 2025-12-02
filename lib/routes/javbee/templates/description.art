@@ -1,28 +1,37 @@
-<!-- 纯文本键值对布局，模拟表格对齐 -->
-<div style="font-size:14px;line-height:2;">
+<!-- 统一键值对+超链布局 -->
+<div style="font-size:14px;line-height:2;word-break:break-all;">
     文件大小	{{ size }}<br>
     发布日期	{{ pubDate }}<br>
     标签	{{ tags.length > 0 ? tags.join(', ') : '无标签' }}<br>
-    {{ if torrentLink }}Torrent下载	<a href="{{ torrentLink }}" style="color:#28a745;text-decoration:none;">点击下载.torrent</a><br>{{ /if }}
+    
+    <!-- Torrent下载：超链模式 -->
+    {{ if torrentLink }}
+    Torrent下载	<a href="{{ torrentLink }}" style="color:#28a745;text-decoration:none;">点击获取.torrent</a><br>
+    {{ /if }}
+    
+    <!-- 磁力链接：与Torrent完全一致的超链模式 -->
     {{ if magnetRaw }}
-    磁力链接	<textarea id="magnet-{{ videoId }}" style="display:none;">{{ magnetRaw }}</textarea>
-    <a href="javascript:void(0);" onclick="document.getElementById('magnet-{{ videoId }}').select();document.execCommand('copy');alert('复制成功');" style="color:#dc3545;text-decoration:none;">点击复制磁力链接</a>
+    磁力下载	<a href="{{ magnetRaw }}" style="color:#dc3545;text-decoration:none;">点击获取磁力链接</a><br>
     {{ /if }}
 </div>
 
-<!-- 封面图（单独展示，不干扰文本布局） -->
+<!-- 封面图：移动端自适应 -->
 {{ if coverImage }}
 <div style="margin-top:10px;">
-    <img src="{{ coverImage }}" style="max-width:100%;border-radius:4px;" referrerpolicy="no-referrer" alt="封面">
+    <img src="{{ coverImage }}" style="max-width:100%;height:auto;border-radius:4px;" referrerpolicy="no-referrer" alt="封面">
 </div>
 {{ /if }}
 
-<!-- 截图（可选） -->
+<!-- 截图：移动端适配 -->
 {{ if screenshots.length > 0 }}
 <div style="margin-top:10px;">
-    <strong>影片截图：</strong><br>
+    <strong style="font-size:14px;">影片截图：</strong><br>
     {{ each screenshots screenshot }}
-        <img src="{{ screenshot.directUrl }}" style="max-width:100%;margin:5px 0;border-radius:4px;" referrerpolicy="no-referrer" onerror="this.src='{{ screenshot.originalUrl }}'" alt="{{ screenshot.alt }}">
+        <img src="{{ screenshot.directUrl }}" 
+             style="max-width:100%;height:auto;margin:4px 0;border-radius:4px;" 
+             referrerpolicy="no-referrer" 
+             onerror="this.src='{{ screenshot.originalUrl }}'" 
+             alt="{{ screenshot.alt }}">
     {{ /each }}
 </div>
 {{ /if }}
