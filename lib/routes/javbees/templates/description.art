@@ -1,65 +1,68 @@
-{{ if image }}
-<img src="{{ image }}">
+{{ if coverImage }}
+<img src="{{ coverImage }}" style="max-width: 100%; height: auto; border-radius: 5px;">
 {{ /if }}
-<table>
-  <tbody>
-    <tr>
-      <th>ID</th>
-      <td>{{ id }}</td>
-    </tr>
-    <tr>
-      <th>Size</th>
-      <td>{{ size }}</td>
-    </tr>
-    <tr>
-      <th>Date</th>
-      <td>{{ pubDate }}</td>
-    </tr>
-    {{ if description }}
-    <tr>
-      <th>Description</th>
-      <td>{{ description }}</td>
-    </tr>
-    {{ /if }}
-    {{ if tags.length > 0 }}
-    <tr>
-      <th>Tag</th>
-      <td>
-        {{ each tags tag }}
-          <a href="/tag/{{ tag }}">{{ tag }}</a>&nbsp
+
+<div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 15px 0;">
+    <div><strong>ID:</strong> {{ videoId }}</div>
+    <div><strong>大小:</strong> {{ size }}</div>
+    <div><strong>发布日期:</strong> {{ pubDateStr }}</div>
+</div>
+
+{{ if tags.length > 0 }}
+<div style="margin-bottom: 15px;">
+    <strong>标签:</strong>
+    {{ each tags tag }}
+    <span style="background: #e0e0e0; padding: 3px 8px; margin: 0 5px 5px 0; border-radius: 3px; display: inline-block;">{{ tag }}</span>
+    {{ /each }}
+</div>
+{{ /if }}
+
+{{ if screenshots.length > 0 }}
+<div style="margin-bottom: 15px;">
+    <strong>截图预览:</strong>
+    <div style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;">
+        {{ each screenshots as screenshot }}
+        <a href="{{ screenshot.directUrl }}" target="_blank">
+            <img src="{{ screenshot.directUrl }}" alt="{{ screenshot.alt }}" style="width: 120px; height: 90px; object-fit: cover; border-radius: 3px;">
+        </a>
         {{ /each }}
-      </td>
-    </tr>
-    {{ /if }}
-    {{ if screenshots.length > 0 }}
-    <tr>
-      <th>Screenshots</th>
-      <td>
-        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0;">
-          {{ each screenshots screenshot }}
-            <a href="{{ screenshot.directUrl }}" target="_blank" title="点击查看原图">
-              <img
-                src="{{ screenshot.directUrl }}"
-                alt="{{ screenshot.alt }}"
-                style="width: 150px; height: 100px; object-fit: cover; border-radius: 3px; border: 1px solid #ddd;"
-              >
-            </a>
-          {{ /each }}
+    </div>
+</div>
+{{ /if }}
+
+<div style="margin-top: 20px; padding: 15px; background: #e8f4fd; border-radius: 5px;">
+    <h4 style="margin-top: 0;">下载链接</h4>
+    
+    {{ if magnetRaw }}
+    <div style="margin-bottom: 10px;">
+        <strong>磁力链接:</strong>
+        <div style="background: white; padding: 10px; border-radius: 3px; margin-top: 5px; font-family: monospace; font-size: 12px; overflow-x: auto;">
+            {{ magnetRaw }}
         </div>
-      </td>
-    </tr>
+        <button onclick="copyToClipboard('{{ magnetRaw }}')" style="margin-top: 5px; padding: 5px 15px; background: #2196F3; color: white; border: none; border-radius: 3px; cursor: pointer;">
+            复制磁力链接
+        </button>
+    </div>
     {{ /if }}
-    {{ if magnet }}
-    <tr>
-      <th>Magnet torrent</th>
-      <td><a href="{{ magnet }}">Magnet torrent link</a></td>
-    </tr>
+    
+    {{ if torrentLink }}
+    <div>
+        <strong>Torrent文件:</strong>
+        <a href="{{ torrentLink }}" target="_blank" style="display: inline-block; margin-top: 5px; padding: 5px 15px; background: #4CAF50; color: white; text-decoration: none; border-radius: 3px;">
+            下载.torrent文件
+        </a>
+    </div>
     {{ /if }}
-    {{ if torrent }}
-    <tr>
-      <th>Download .torrent</th>
-      <td><a href="{{ torrent }}">Download torrent</a></td>
-    </tr>
-    {{ /if }}
-  </tbody>
-</table>
+</div>
+
+<script>
+function copyToClipboard(text) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    alert('链接已复制到剪贴板！');
+}
+</script>
