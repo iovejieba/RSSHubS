@@ -1,117 +1,159 @@
-import { route, request } from '@/routes/utils';
-import path from 'node:path';
+import { Route } from '@/types';
+import got from '@/utils/got';
+import { load } from 'cheerio';
+import { parseDate } from '@/utils/parse-date';
 import { art } from '@/utils/render';
+import path from 'node:path';
 
-export default route({
-    path: '/javbees/:type?/:keyword{.*}?',
+// RFC822 +0000
+const toRFC822 = (date: Date) =>
+    date
+        .toUTCString()
+        .replace('GMT', '+0000');
 
-    name: 'JavBee Folo Compatible Feed',
-    example: '/javbees/new',
-    maintainers: ['yourname'],
+// 文件大小转换（GiB/MiB → bytes）
+const getSizeInBytes = (sizeStr: string) => {
+    const match = sizeStr.match(/(\d+(\.\d+)?)\s*(GiB|MiB)/);
+    if (!match) return '104857600'; // 默认100MB防止 Folo 拒绝 length=0
+    const num = parseFloat(match[1]);
+    return match[3] === 'GiB'
+        ? Math.round(num * 1073741824).toString()
+        : Math.round(num * 1048576).toString();
+};
+
+export const route: Route = {
+    path: '/:type/:keyword{.*}?',
     categories: ['multimedia'],
+    name: 'JavBee Folo 专用订阅（增强版）',
+    maintainers: ['yourname'],
     features: { nsfw: true },
-
-    handler,
-});
+    parameters: {
+        type: 'new/popular/random/tag/date',
+        keyword: 'popular 填 7/30/60；tag 填标签；date 填 2025-11-30'
+    },
+    description: '完全兼容 Folo 的 JavBee 订阅，并保留截图直链拼接模式',
+    handler
+};
 
 async function handler(ctx) {
-    const type = ctx.req.param('type') || 'new';
-    const keyword = ctx.req.param('keyword') || '';
-
     const rootUrl = 'https://javbee.vip';
+    const type = ctx.req.param('type');
+    const keyword = ctx.req.param('keyword') ?? '';
 
-    // ----------------------------
-    // 1) 构建真实可用 API URL
-    // ----------------------------
-    let apiUrl = '';
+    const currentUrl =
+        type === 'popular' && keyword
+            ? `${rootUrl}/${type}?sort_day=${keyword}`
+            : `${rootUrl}/${type}${keyword ? `/${keyword}` : ''}`;
 
-    if (type === 'popular' && keyword) {
-        apiUrl = `${rootUrl}/api/video/popular?sort_day=${keyword}&page=1`;
-    } else if (type === 'tag' && keyword) {
-        apiUrl = `${rootUrl}/api/video/tag/${keyword}?page=1`;
-    } else if (type === 'date' && keyword) {
-        apiUrl = `${rootUrl}/api/video/date/${keyword}?page=1`;
-    } else {
-        apiUrl = `${rootUrl}/api/video/${type}?page=1`;
-    }
+    const response = await got({
+        url: currentUrl,
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/129 Safari/537.36',
+            Referer: rootUrl
+        }
+    });
 
-    // ----------------------------
-    // 2) 请求 API
-    // ----------------------------
-    const response = await request.get(apiUrl);
-    const list = response.data?.data || [];
+    const $ = load(response.data);
 
-    const items = list.map((video) => {
-        const rawTitle = video.title || 'Untitled';
+    const items = $('.card .columns')
+        .toArray()
+        .map((el) => {
+            const item = $(el);
 
-        // 提取番号作为 guid
-        const idMatch = rawTitle.match(/[A-Z]{2,6}-\d{2,5}/i);
-        const videoId = idMatch ? idMatch[0] : 'UnknownID';
+            const titleEl = item.find('.title.is-4.is-spaced a');
+            const rawTitle = titleEl.text().trim();
 
-        // 封面图
-        const coverImage = video.cover?.startsWith('http')
-            ? video.cover
-            : `https://javbee.image-sky.com${video.cover || ''}`;
+            // 提取番号用于 guid
+            const idMatch = rawTitle.match(/[A-Z]{2,6}-\d{2,5}/);
+            const videoId = idMatch ? idMatch[0] : 'UnknownID';
 
-        // 拼接截图（保持直链恢复逻辑）
-        const screenshots = (video.screenshots || []).map((img, index) => {
-            let directUrl = img.startsWith('http')
-                ? img
-                : `https://javbee.image-sky.com${img}`;
+            // 标题使用原始 JavBee 标题（更友好）
+            const itemTitle = rawTitle;
+
+            // 链接
+            const itemLink = new URL(titleEl.attr('href') || '/', rootUrl).href;
+
+            // 文件大小
+            const sizeStr = item.find('.title.is-4.is-spaced span.is-size-6').text().trim() || '1 GiB';
+
+            // 日期解析
+            let pubDate = new Date();
+            const dateLink = item.find('.subtitle a').attr('href');
+            if (dateLink?.includes('/date/')) {
+                const dateStr = dateLink.split('/date/').pop();
+                if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                    pubDate = parseDate(dateStr);
+                }
+            }
+            const pub = toRFC822(pubDate);
+
+            // Magnet / Torrent（不制造假链接）
+            const magnet = item.find('a[title="Download Magnet"]').attr('href') || '';
+            const torrent = item.find('a[title="Download .torrent"]').attr('href') || '';
+            const finalDownload = magnet || torrent || '';
+
+            // 封面图
+            const cover = item.find('img.image.lazy').attr('data-src')
+                || item.find('img.image.lazy').attr('src')
+                || '';
+            const coverImg = cover ? new URL(cover, rootUrl).href : '';
+
+            // ========== 截图直链拼接逻辑（保留原样） ==========
+            const screenshots = [];
+            item.find('.images-description ul li a.img-items').each((i, el) => {
+                const orig = $(el).text().trim().replace(/\s+/g, '');
+                if (orig.startsWith('https') && orig.endsWith('_s.jpg')) {
+                    try {
+                        const u = new URL(orig);
+                        const host = u.hostname;
+                        const full = orig.split('/').pop()?.replace(/^[A-Za-z0-9]+-/, '') || '';
+                        const direct = `https://${host}/upload/Application/storage/app/public/uploads/users/aQ2WVGrBGkx7y/${full}`;
+                        screenshots.push({ originalUrl: orig, directUrl: direct });
+                    } catch {
+                        screenshots.push({ originalUrl: orig, directUrl: orig });
+                    }
+                }
+            });
+
+            // 标签
+            const tags = item.find('.tags .tag')
+                .toArray()
+                .map((t) => $(t).text().trim())
+                .filter(Boolean);
+
+            // 描述（已在模板内部 escape）
+            const description = art(path.join(__dirname, 'templates/description.art'), {
+                coverImage: coverImg,
+                id: videoId,
+                size: sizeStr.replace('GiB', 'GB'),
+                pubDate: pub.replace('+0000', ''),
+                tags,
+                magnetRaw: magnet,
+                torrentLinkRaw: torrent,
+                screenshots
+            });
+
+            // 输出给 RSSHub（Folo 100% 兼容）
             return {
-                directUrl,
-                alt: `截图${index + 1}`,
+                title: itemTitle,
+                link: itemLink,
+                guid: `${itemLink}#${videoId}`,
+                pubDate: pub,
+                description,
+                category: tags,
+
+                enclosure_url: finalDownload || undefined,
+                enclosure_type: finalDownload ? 'application/x-bittorrent' : undefined,
+                enclosure_length: finalDownload ? getSizeInBytes(sizeStr) : undefined
             };
         });
 
-        // 文件大小（用于 enclosure.length）
-        const sizeMB = parseFloat(video.size_mb || '500');
-        const enclosureLength = Math.max(1024 * 1024 * sizeMB, 1024 * 100);
-
-        // 发布日期
-        const pubDate = new Date(video.released_at || video.created_at).toUTCString();
-
-        // 下载链接
-        const magnetRaw = video.magnet || '';
-        const torrentLinkRaw = video.torrent_url || '';
-
-        // 标签
-        const tags = video.tags || [];
-
-        // 使用独立模板渲染 description
-        const description = art(path.join(__dirname, 'templates/description.art'), {
-            coverImage,
-            id: videoId,
-            size: video.size || '',
-            pubDate: pubDate.replace(' GMT', ''),
-            screenshots,
-            magnetRaw,
-            torrentLinkRaw,
-            tags,
-        });
-
-        return {
-            title: rawTitle,
-            description,
-            link: `${rootUrl}/detail/${video.slug}`,
-            guid: videoId,
-            pubDate,
-            author: 'JavBee',
-
-            enclosure_url: torrentLinkRaw || '', // Folo 强依赖
-            enclosure_type: 'application/x-bittorrent',
-            enclosure_length: enclosureLength,
-            category: tags,
-        };
-    });
-
     return {
-        title: `JavBee - ${type.toUpperCase()} (Folo)`,
-        link: `${rootUrl}/${type}`,
-        description: 'JavBee Folo Compatible Feed',
-        item: items,
+        title: `JavBee - ${type} (Folo)`,
+        link: currentUrl,
+        description: 'Folo Compatible JavBee Feed',
         language: 'en',
-        lastBuildDate: new Date().toUTCString(),
-        ttl: 5,
+        lastBuildDate: toRFC822(new Date()),
+        item: items
     };
 }
