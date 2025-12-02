@@ -163,15 +163,16 @@ async function handler(ctx) {
                     }
                 });
 
-                // 8. 根据Folo规范设置enclosure
+                // ========== 关键修复一：构建 enclosure 对象 ==========
                 let enclosure = null;
+                const lengthBytes = parseSizeToBytes(size);
                 
-                // 策略：优先使用.torrent种子文件
+                // 策略：优先使用.torrent种子文件作为enclosure
                 if (torrentLinkRaw) {
                     enclosure = {
                         url: torrentLinkRaw,
                         type: 'application/x-bittorrent',
-                        length: parseSizeToBytes(size),
+                        length: lengthBytes.toString(), // 转换为字符串
                     };
                 } 
                 // 备选：使用磁力链接
@@ -179,19 +180,19 @@ async function handler(ctx) {
                     enclosure = {
                         url: magnetRaw,
                         type: 'application/x-bittorrent',
-                        length: parseSizeToBytes(size),
+                        length: lengthBytes.toString(),
                     };
                 }
 
-                // 9. 返回Item（修复所有Folo解析问题）
+                // 9. 返回Item（整合所有修复）
                 return {
                     title: `${videoId} ${size}`,
                     // 修复1: 确保pubDate总是有效日期
                     pubDate: pubDate ? parseDate(pubDate, 'YYYY-MM-DD') : new Date(),
                     link: itemLink,
                     // 修复2: 生成简洁、唯一、无特殊字符的guid
-                    guid: `${videoId}-${pubDate || 'nodate'}`.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\-]/g, ''),
-                    // 修复3: 对磁力链接中的 & 进行XML转义
+                    guid: `${videoId}-${lengthBytes}`.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\-]/g, ''),
+                    // 修复3: 传递原始磁力链接，避免双重转义
                     description: art(path.join(__dirname, 'templates/description.art'), {
                         image: coverImageUrl,
                         id: videoId,
@@ -199,13 +200,14 @@ async function handler(ctx) {
                         pubDate: pubDate || '未知日期',
                         description,
                         tags,
-                        // 关键修复：转义磁力链接中的 & 符号
-                        magnet: magnetRaw ? magnetRaw.replace(/&/g, '&amp;') : '',
+                        // 关键：传递原始链接，XML层会自动转义
+                        magnet: magnetRaw,
                         torrent: torrentLinkRaw,
                         screenshots,
                     }),
                     author: tags.join(', '),
                     category: tags,
+                    // 关键：必须包含enclosure字段，供Folo生成附件
                     enclosure: enclosure,
                 };
             });
