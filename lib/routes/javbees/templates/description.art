@@ -1,0 +1,65 @@
+{{ if image }}
+<img src="{{ image }}">
+{{ /if }}
+<table>
+  <tbody>
+    <tr>
+      <th>ID</th>
+      <td>{{ id }}</td>
+    </tr>
+    <tr>
+      <th>Size</th>
+      <td>{{ size }}</td>
+    </tr>
+    <tr>
+      <th>Date</th>
+      <td>{{ pubDate }}</td>
+    </tr>
+    {{ if description }}
+    <tr>
+      <th>Description</th>
+      <td>{{ description }}</td>
+    </tr>
+    {{ /if }}
+    {{ if tags.length > 0 }}
+    <tr>
+      <th>Tag</th>
+      <td>
+        {{ each tags tag }}
+          <a href="/tag/{{ tag }}">{{ tag }}</a>&nbsp
+        {{ /each }}
+      </td>
+    </tr>
+    {{ /if }}
+    {{ if screenshots.length > 0 }}
+    <tr>
+      <th>Screenshots</th>
+      <td>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0;">
+          {{ each screenshots as screenshot }}
+            <a href="{{ screenshot.directUrl }}" target="_blank" title="点击查看原图">
+              <img 
+                src="{{ screenshot.directUrl }}" 
+                alt="{{ screenshot.alt }}" 
+                style="width: 150px; height: 100px; object-fit: cover; border-radius: 3px; border: 1px solid #ddd;"
+              >
+            </a>
+          {{ /each }}
+        </div>
+      </td>
+    </tr>
+    {{ /if }}
+    {{ if magnet }}
+    <tr>
+      <th>Magnet torrent</th>
+      <td><a href="{{ magnet }}">Magnet torrent link</a></td>
+    </tr>
+    {{ /if }}
+    {{ if torrent }}
+    <tr>
+      <th>Download .torrent</th>
+      <td><a href="{{ torrent }}">Download torrent</a></td>
+    </tr>
+    {{ /if }}
+  </tbody>
+</table>
