@@ -36,7 +36,7 @@
       <th>Screenshots</th>
       <td>
         <div style="display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0;">
-          {{ each screenshots as screenshot }}
+          {{ each screenshots screenshot }}
             <a href="{{ screenshot.directUrl }}" target="_blank" title="点击查看原图">
               <img 
                 src="{{ screenshot.directUrl }}" 
