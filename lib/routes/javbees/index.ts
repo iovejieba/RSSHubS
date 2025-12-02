@@ -24,11 +24,10 @@ export const route: Route = {
 - 随机资源：\`/javbee/random\`
 
 ### 功能说明
-1. **完全兼容Folo**：严格按照Folo的RSS解析规范实现
-2. **标准enclosure格式**：使用标准的enclosure对象，包含url、type和length
-3. **自动文件大小转换**：将显示大小转换为字节数
-4. **双链接支持**：描述中包含磁力链接，enclosure使用.torrent文件
-5. **错误处理**：完整的异常捕获和友好错误提示`,
+1. **完全兼容Folo**：修复了导致XML解析失败的三个关键问题。
+2. **标准enclosure格式**：使用标准的enclosure对象。
+3. **双链接支持**：描述中包含转义后的磁力链接，enclosure使用.torrent文件。
+4. **错误处理**：完整的异常捕获和友好错误提示。`,
     features: {
         nsfw: true,
     },
@@ -38,10 +37,7 @@ export const route: Route = {
 function parseSizeToBytes(sizeStr) {
     if (!sizeStr) return 0;
     
-    // 清理字符串：移除括号和多余空格
     const cleanStr = sizeStr.replace(/[()]/g, '').trim().toUpperCase();
-    
-    // 匹配数字和单位
     const match = cleanStr.match(/^([\d.]+)\s*([KMG]?B?)$/);
     if (!match) return 0;
     
@@ -62,7 +58,7 @@ function parseSizeToBytes(sizeStr) {
         case 'T':
             return Math.round(value * 1024 * 1024 * 1024 * 1024);
         default:
-            return Math.round(value); // 假设默认是字节
+            return Math.round(value);
     }
 }
 
@@ -105,7 +101,7 @@ async function handler(ctx) {
                 const titleEl = item.find('.title.is-4.is-spaced a');
                 const videoId = titleEl.text().trim() || '未知ID';
                 const sizeText = item.find('.title.is-4.is-spaced span.is-size-6').text().trim() || '';
-                const size = sizeText.replace(/[()]/g, ''); // 清理括号
+                const size = sizeText.replace(/[()]/g, '');
                 
                 // 2. 提取发布日期
                 let pubDate;
@@ -167,10 +163,10 @@ async function handler(ctx) {
                     }
                 });
 
-                // 8. 根据Folo规范设置enclosure（关键修改）
+                // 8. 根据Folo规范设置enclosure
                 let enclosure = null;
                 
-                // 策略：优先使用.torrent种子文件（与141方案一致）
+                // 策略：优先使用.torrent种子文件
                 if (torrentLinkRaw) {
                     enclosure = {
                         url: torrentLinkRaw,
@@ -187,12 +183,15 @@ async function handler(ctx) {
                     };
                 }
 
-                // 9. 返回Item（完全遵循Folo的RSS解析规范）
+                // 9. 返回Item（修复所有Folo解析问题）
                 return {
                     title: `${videoId} ${size}`,
-                    pubDate: parseDate(pubDate, 'YYYY-MM-DD'),
+                    // 修复1: 确保pubDate总是有效日期
+                    pubDate: pubDate ? parseDate(pubDate, 'YYYY-MM-DD') : new Date(),
                     link: itemLink,
-                    guid: `${itemLink}#${videoId}`, // 确保guid唯一
+                    // 修复2: 生成简洁、唯一、无特殊字符的guid
+                    guid: `${videoId}-${pubDate || 'nodate'}`.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\-]/g, ''),
+                    // 修复3: 对磁力链接中的 & 进行XML转义
                     description: art(path.join(__dirname, 'templates/description.art'), {
                         image: coverImageUrl,
                         id: videoId,
@@ -200,13 +199,14 @@ async function handler(ctx) {
                         pubDate: pubDate || '未知日期',
                         description,
                         tags,
-                        magnet: magnetRaw,
+                        // 关键修复：转义磁力链接中的 & 符号
+                        magnet: magnetRaw ? magnetRaw.replace(/&/g, '&amp;') : '',
                         torrent: torrentLinkRaw,
                         screenshots,
                     }),
                     author: tags.join(', '),
                     category: tags,
-                    enclosure: enclosure, // 直接设置enclosure对象
+                    enclosure: enclosure,
                 };
             });
 
