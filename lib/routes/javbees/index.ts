@@ -23,12 +23,26 @@ export const route: Route = {
 - 随机资源：\`/javbee/random\`
 
 ### 功能说明
-1. **Folo完全兼容**：匹配141jav的订阅字段规范
-2. **全功能保留**：支持类型筛选、截图预览、磁力/Torrent下载
-3. **标准字段输出**：确保RSS解析无异常`,
+1. **Folo完全兼容**：自动生成合规pubDate，解决时间缺失问题
+2. **全功能保留**：截图预览、磁力/Torrent下载、标签解析
+3. **稳定订阅**：匹配141PPV的字段规范`,
     features: {
         nsfw: true,
     },
+};
+
+// 生成RFC 822格式时间（解决pubDate缺失）
+const generateRFC822Date = (uniqueKey: string) => {
+    // 基于唯一标识生成固定偏移时间，避免重复
+    let hash = 0;
+    for (let i = 0; i < uniqueKey.length; i++) {
+        hash = uniqueKey.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const baseDate = new Date('2025-01-01T00:00:00Z');
+    const offset = Math.abs(hash) % (365 * 24 * 60 * 60 * 1000); // 一年内随机偏移
+    const finalDate = new Date(baseDate.getTime() + offset);
+    // 转为RFC 822格式（如：Thu, 04 Dec 2025 12:30:00 GMT）
+    return finalDate.toUTCString().replace(/UTC/, 'GMT');
 };
 
 async function handler(ctx) {
@@ -36,7 +50,7 @@ async function handler(ctx) {
     const type = ctx.req.param('type');
     const keyword = ctx.req.param('keyword') ?? '';
 
-    // 保留原有URL构建逻辑（popular类型特殊处理sort_day参数）
+    // 构建请求URL
     let currentUrl;
     if (type === 'popular' && keyword) {
         currentUrl = `${rootUrl}/${type}?sort_day=${keyword}`;
@@ -44,7 +58,7 @@ async function handler(ctx) {
         currentUrl = `${rootUrl}/${type}${keyword ? `/${keyword}` : ''}`;
     }
 
-    // 保留原有请求逻辑
+    // 请求页面
     const response = await got({
         method: 'get',
         url: currentUrl,
@@ -57,97 +71,97 @@ async function handler(ctx) {
 
     const $ = load(response.data);
 
-    // 保留原有Item解析逻辑，字段对齐141jav的Folo兼容格式
+    // 解析Item
     const items = $('.card .columns')
         .toArray()
         .map((itemEl) => {
             const item = $(itemEl);
             const titleEl = item.find('.title.is-4.is-spaced a');
             
-            // 保留原有ID/标题逻辑
-            const videoId = titleEl.text().trim() || `未知ID-${Date.now()}`;
+            // 提取基础信息（简化Title，匹配141PPV格式）
+            const rawVideoId = titleEl.text().trim() || `未知ID-${Date.now()}`;
+            const videoId = rawVideoId.replace(/\[FHD\]|\[HD\]|\s+/g, '').split(' ')[0] || rawVideoId; // 提取核心ID
             const size = item.find('.title.is-4.is-spaced span.is-size-6').text().trim() || '未知大小';
+            const itemLink = titleEl.attr('href') ? new URL(titleEl.attr('href'), rootUrl).href : currentUrl;
 
-            // 保留原有日期解析逻辑（适配YYYY-MM-DD格式）
+            // 解析发布日期（优先用页面时间，无则生成）
             let pubDate;
             const dateLink = item.find('.subtitle a').attr('href');
             if (dateLink?.includes('/date/')) {
-                pubDate = dateLink.split('/date/').pop();
+                const extractedDate = dateLink.split('/date/').pop();
+                if (/^\d{4}-\d{2}-\d{2}$/.test(extractedDate)) {
+                    pubDate = parseDate(extractedDate, 'YYYY-MM-DD').toUTCString().replace(/UTC/, 'GMT');
+                }
+            }
+            // 无真实时间则生成固定偏移的RFC 822时间
+            if (!pubDate) {
+                pubDate = generateRFC822Date(`${videoId}-${itemLink}`);
             }
 
-            // 保留原有标签解析逻辑
+            // 解析标签
             const tags = item.find('.tags .tag')
                 .toArray()
                 .map(t => $(t).text().trim())
                 .filter(Boolean);
 
-            // 保留原有下载链接提取逻辑
-            const magnetRaw = item.find('a[title="Download Magnet"]').attr('href') || '';
-            const torrentLinkRaw = item.find('a[title="Download .torrent"]').attr('href') || '';
-            const downloadUrl = magnetRaw || torrentLinkRaw;
-
-            // 保留原有封面图/链接逻辑
-            const itemLink = titleEl.attr('href') ? new URL(titleEl.attr('href'), rootUrl).href : currentUrl;
+            // 封面图
             const imageEl = item.find('img.image.lazy');
             const coverImageUrl = imageEl.attr('data-src') || imageEl.attr('src') || '';
             const coverImage = coverImageUrl ? new URL(coverImageUrl, rootUrl).href : '';
 
-            // 保留原有截图解析逻辑（完整保留功能）
+            // 下载链接
+            const magnetRaw = item.find('a[title="Download Magnet"]').attr('href') || '';
+            const torrentLinkRaw = item.find('a[title="Download .torrent"]').attr('href') || '';
+            const downloadUrl = magnetRaw || torrentLinkRaw;
+
+            // 截图解析（保留原有逻辑）
             const screenshots = [];
             item.find('.images-description ul li a.img-items').each((_, el) => {
-                const originalScreenshotUrl = $(el).text().trim().replace(/\s+/g, '');
-                if (originalScreenshotUrl.startsWith('https') && originalScreenshotUrl.endsWith('_s.jpg')) {
+                const originalUrl = $(el).text().trim().replace(/\s+/g, '');
+                if (originalUrl.startsWith('https') && originalUrl.endsWith('_s.jpg')) {
                     try {
-                        const urlObj = new URL(originalScreenshotUrl);
-                        const imgHostDomain = urlObj.hostname;
-                        let fullFileName = originalScreenshotUrl.split('/').pop() || '';
-                        fullFileName = fullFileName.replace(/^[A-Za-z0-9]+-/, '');
-                        const directPreviewUrl = `https://${imgHostDomain}/upload/Application/storage/app/public/uploads/users/aQ2WVGrBGkx7y/${fullFileName}`;
-                        screenshots.push({
-                            originalUrl: originalScreenshotUrl,
-                            directUrl: directPreviewUrl,
-                            alt: `截图${screenshots.length + 1}`,
-                        });
-                    } catch (error) {
-                        screenshots.push({
-                            originalUrl: originalScreenshotUrl,
-                            directUrl: originalScreenshotUrl,
-                            alt: `截图${screenshots.length + 1}`,
-                        });
+                        const urlObj = new URL(originalUrl);
+                        const imgHost = urlObj.hostname;
+                        const fullFileName = originalUrl.split('/').pop()?.replace(/^[A-Za-z0-9]+-/, '') || '';
+                        const directUrl = `https://${imgHost}/upload/Application/storage/app/public/uploads/users/aQ2WVGrBGkx7y/${fullFileName}`;
+                        screenshots.push({ originalUrl, directUrl, alt: `截图${screenshots.length + 1}` });
+                    } catch {
+                        screenshots.push({ originalUrl, directUrl: originalUrl, alt: `截图${screenshots.length + 1}` });
                     }
                 }
             });
 
-            // 保留原有描述渲染逻辑（含封面、截图、标签等）
+            // 渲染描述内容
             const description = art(path.join(__dirname, 'templates/description.art'), {
                 coverImage,
-                videoId,
+                videoId: rawVideoId, // 保留完整ID用于展示
                 size,
-                pubDateStr: pubDate || '未知日期',
+                pubDateStr: pubDate.split(' GMT')[0], // 仅展示日期部分
                 tags,
                 magnetRaw,
                 torrentLinkRaw,
                 screenshots,
             });
 
-            // ========== 对齐141jav的Folo兼容字段 ==========
+            // Folo兼容的字段结构（匹配141PPV）
             return {
-                title: `${videoId} ${size}`, // 保留标题格式
-                pubDate: parseDate(pubDate, 'YYYY-MM-DD'), // 适配日期格式
-                link: itemLink, // 标准link字段
-                description: description, // 保留富文本描述
-                author: tags.join(', ') || 'JavBee', // 作者字段（用标签填充）
-                category: tags, // 分类字段
-                enclosure_type: 'application/x-bittorrent', // Folo识别的附件类型
-                enclosure_url: downloadUrl, // Folo识别的附件链接
+                title: `${videoId} ${size}`, // 简洁Title，避免特殊字符
+                pubDate: pubDate, // 强制RFC 822格式
+                link: itemLink,
+                description: description,
+                author: 'JavBee',
+                category: tags,
+                enclosure: {
+                    url: downloadUrl,
+                    type: 'application/x-bittorrent',
+                },
             };
         });
 
-    // 保留原有Feed元信息逻辑
+    // Feed元信息
     const pageTitle = $('title').text().trim();
     const feedTitle = `JavBee - ${pageTitle.split('-')[0]?.trim() || type}`;
 
-    // 返回与141jav一致的结构（Folo可识别）
     return {
         title: feedTitle,
         link: currentUrl,

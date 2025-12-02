@@ -1,5 +1,5 @@
 {{ if coverImage }}
-<img src="{{ coverImage }}" style="max-width: 100%; height: auto; border-radius: 4px; margin-bottom: 12px;" alt="封面">
+<img src="{{ coverImage }}" style="max-width: 100%; height: auto; border-radius: 4px; margin-bottom: 12px;" alt="封面" referrerpolicy="no-referrer">
 {{ /if }}
 
 <div style="background: #f5f5f5; padding: 12px; border-radius: 4px; margin: 12px 0; font-size: 14px;">
@@ -23,7 +23,7 @@
     <div style="margin-top: 6px; display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 4px;">
         {{ each screenshots screenshot }}
         <a href="{{ screenshot.directUrl }}" rel="noopener noreferrer">
-            <img src="{{ screenshot.directUrl }}" alt="{{ screenshot.alt }}" style="width: 100%; height: auto; border-radius: 3px;">
+            <img src="{{ screenshot.directUrl }}" alt="{{ screenshot.alt }}" style="width: 100%; height: auto; border-radius: 3px;" referrerpolicy="no-referrer">
         </a>
         {{ /each }}
     </div>
