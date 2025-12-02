@@ -38,9 +38,9 @@
         <div style="display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0;">
           {{ each screenshots screenshot }}
             <a href="{{ screenshot.directUrl }}" target="_blank" title="点击查看原图">
-              <img 
-                src="{{ screenshot.directUrl }}" 
-                alt="{{ screenshot.alt }}" 
+              <img
+                src="{{ screenshot.directUrl }}"
+                alt="{{ screenshot.alt }}"
                 style="width: 150px; height: 100px; object-fit: cover; border-radius: 3px; border: 1px solid #ddd;"
               >
             </a>
