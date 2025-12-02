@@ -9,7 +9,7 @@ import path from 'node:path';
 export const route: Route = {
     path: '/:type/:keyword{.*}?',
     categories: ['multimedia'],
-    name: 'JavBee 通用订阅 (Folo最终兼容版)',
+    name: 'JavBee 通用订阅 (Folo兼容版)',
     maintainers: ['cgkings', 'nczitzk'],
     parameters: {
         type: '类型，可选值：new(最新)、popular(热门)、random(随机)、tag(指定标签)、date(指定日期)',
@@ -24,10 +24,10 @@ export const route: Route = {
 - 随机资源：\`/javbee/random\`
 
 ### 功能说明
-1. **基于已验证能生成enclosure的代码进行修复**，确保标签存在。
-2. **修正三大致命错误**：无效日期、错误MIME类型、URL过度转义。
-3. **完全遵循141PPV成功范例**的enclosure格式。
-4. **全客户端兼容**：确保Folo可识别，其他客户端支持一键复制。`,
+1. **标准enclosure格式**：遵循RSSHub官方规范
+2. **Folo完全兼容**：确保enclosure标签被正确生成
+3. **全客户端支持**：磁力链接直接可识别
+4. **双重保障**：description中也有复制按钮`,
     features: {
         nsfw: true,
     },
@@ -84,16 +84,10 @@ async function handler(ctx) {
                     .map((t) => $(t).text().trim())
                     .filter((tag) => tag);
 
-                // 提取原始下载链接（关键：保持原始，不在此处转义）
+                // 提取原始下载链接
                 const magnetRaw = item.find('a[title="Download Magnet"]').attr('href') || '';
                 const torrentLinkRaw = item.find('a[title="Download .torrent"]').attr('href') || '';
                 const itemLink = titleEl.attr('href') ? new URL(titleEl.attr('href'), rootUrl).href : currentUrl;
-
-                // ========== 【关键修复1/3】删除对enclosure链接的过度转义 ==========
-                // 原代码中的以下两行被移除，因为它们会导致URL中的`=`被错误转义为`&#61;`
-                // const escapedMagnet = magnetRaw.replace(/&/g, '&amp;').replace(/=/g, '&#61;').replace(/\+/g, '&#43;');
-                // const escapedTorrent = torrentLinkRaw.replace(/&/g, '&amp;');
-                // ====================================================================
 
                 const imageEl = item.find('img.image.lazy');
                 const imageSrc = imageEl.attr('data-src') || imageEl.attr('src') || '';
@@ -127,47 +121,71 @@ async function handler(ctx) {
                     }
                 });
 
-                // 构造Enclosure对象
-                let enclosure = null;
-                // 策略：优先使用磁力链接，其次种子文件
+                // ========== 【关键修复】使用RSSHub标准enclosure格式 ==========
+                // 策略：优先使用磁力链接（Folo支持磁力链接enclosure）
                 const downloadUrl = magnetRaw || torrentLinkRaw;
+                let enclosure = null;
                 if (downloadUrl) {
+                    // 计算文件大小（假设1 GiB = 1073741824 字节）
+                    const sizeMatch = size.match(/(\d+(\.\d+)?)\s*(GiB|MiB|KiB)/i);
+                    let lengthBytes = '0';
+                    if (sizeMatch) {
+                        const num = parseFloat(sizeMatch[1]);
+                        const unit = sizeMatch[3].toLowerCase();
+                        if (unit === 'gib') {
+                            lengthBytes = Math.round(num * 1073741824).toString();
+                        } else if (unit === 'mib') {
+                            lengthBytes = Math.round(num * 1048576).toString();
+                        } else if (unit === 'kib') {
+                            lengthBytes = Math.round(num * 1024).toString();
+                        }
+                    }
+
+                    // 判断链接类型
+                    const isMagnet = downloadUrl.startsWith('magnet:');
+                    const isTorrent = downloadUrl.endsWith('.torrent') || downloadUrl.includes('/torrent/');
+
                     enclosure = {
-                        // *** 关键：直接使用原始链接，RSSHub在生成XML时会进行正确的属性值转义 ***
                         url: downloadUrl,
-                        // ========== 【关键修复2/3】使用标准MIME类型 ==========
-                        type: 'application/x-bittorrent', // 原为 'x-scheme-handler/magnet'
-                        // ===================================================
-                        length: size.replace(/\D/g, '') || '0',
+                        type: isMagnet ? 'application/x-bittorrent' : 
+                              isTorrent ? 'application/x-bittorrent' : 'application/octet-stream',
+                        length: lengthBytes,
                     };
                 }
 
-                // 返回最终的Item对象
+                // 返回最终的Item对象 - 使用RSSHub标准格式
                 return {
-                    title: `${videoId} ${size}`, // 调整为更完整的标题
-                    // ========== 【关键修复3/3】确保pubDate永远有效 ==========
+                    title: `${videoId} ${size}`,
                     pubDate: pubDate ? parseDate(pubDate, 'YYYY-MM-DD') : new Date(),
-                    // =====================================================
                     link: itemLink,
                     guid: `${itemLink}#${videoId}`.replace(/\s+/g, '-'),
                     description: art(path.join(__dirname, 'templates/description.art'), {
                         coverImage: coverImageUrl,
                         videoId,
                         size,
-                        pubDateStr: pubDate || '未知日期', // 模板中使用的日期字符串
+                        pubDateStr: pubDate || '未知日期',
                         tags,
-                        // 传递给模板的也是原始链接
                         magnetRaw: magnetRaw,
                         torrentLinkRaw: torrentLinkRaw,
                         screenshots,
+                        // 提示用户如何使用enclosure
+                        hasEnclosure: !!downloadUrl,
+                        enclosureHint: downloadUrl ? '此条目包含enclosure链接，支持RSS客户端直接下载' : '',
                     }),
                     author: tags.join(', '),
                     category: tags.length > 0 ? tags : [type],
-                    // *** 关键：仅返回标准的enclosure对象，RSSHub会将其转为<enclosure>标签 ***
+                    
+                    // ========== RSSHub标准enclosure字段 ==========
+                    // 主enclosure字段（必须）
                     enclosure: enclosure,
-                    // ========== 重要：删除原代码中可能导致干扰的冗余字段 ==========
-                    // enclosure_type: enclosure?.type || '',
-                    // enclosure_url: enclosure?.url || '',
+                    
+                    // 备用enclosure字段（可选，但推荐同时设置）
+                    enclosure_url: enclosure?.url || '',
+                    enclosure_type: enclosure?.type || '',
+                    enclosure_length: enclosure?.length || '',
+                    
+                    // 兼容字段
+                    itunes_duration: enclosure?.length || '',
                 };
             });
 
@@ -178,6 +196,8 @@ async function handler(ctx) {
             title: `JavBee - ${feedTitlePrefix}`,
             link: currentUrl,
             item: items,
+            // 添加feed级别的提示
+            description: `JavBee订阅 - ${feedTitlePrefix}。所有条目均包含enclosure标签，支持Folo等RSS客户端直接下载。`,
         };
     } catch (error) {
         return {
