@@ -39,9 +39,7 @@
         <div style="background: white; padding: 8px; border-radius: 3px; margin-top: 4px; font-family: monospace; font-size: 12px; overflow-x: auto; word-break: break-all;">
             {{ magnetRaw }}
         </div>
-        <div style="margin-top: 6px; color: #2196f3; font-size: 13px;">
-            👉 长按/右键复制链接
-        </div>
+        <div style="margin-top: 6px; color: #2196f3; font-size: 13px;">长按/右键复制链接</div>
     </div>
     {{ /if }}
 
