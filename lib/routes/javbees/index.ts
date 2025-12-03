@@ -14,11 +14,12 @@ const toRFC822 = (date: Date) =>
 // 文件大小转换（GiB/MiB → bytes）
 const getSizeInBytes = (sizeStr: string) => {
     const match = sizeStr.match(/(\d+(\.\d+)?)\s*(GiB|MiB)/);
-    if (!match) return '104857600'; // 默认100MB防止 Folo 拒绝 length=0
+    if (!match) return 104857600; // 默认100MB防止 Folo 拒绝 length=0
     const num = parseFloat(match[1]);
+
     return match[3] === 'GiB'
-        ? Math.round(num * 1073741824).toString()
-        : Math.round(num * 1048576).toString();
+        ? Math.round(num * 1073741824)
+        : Math.round(num * 1048576);
 };
 
 export const route: Route = {
@@ -87,10 +88,30 @@ async function handler(ctx) {
             }
             const pub = toRFC822(pubDate);
 
-            // Magnet / Torrent（不制造假链接）
+            // ======================
+            // Magnet / Torrent
+            // ======================
             const magnet = item.find('a[title="Download Magnet"]').attr('href') || '';
             const torrent = item.find('a[title="Download .torrent"]').attr('href') || '';
-            const finalDownload = magnet || torrent || '';
+
+            // ======================
+            // Folo 兼容 enclosure（核心修复）
+            // ======================
+            let enclosure_url: string | undefined;
+            let enclosure_type: string | undefined;
+            let enclosure_length: number | undefined;
+
+            const sizeBytes = getSizeInBytes(sizeStr); // number
+
+            if (magnet) {
+                enclosure_url = magnet;
+                enclosure_type = 'application/x-bittorrent; torrent=magnet';
+                enclosure_length = sizeBytes;
+            } else if (torrent) {
+                enclosure_url = torrent;
+                enclosure_type = 'application/x-bittorrent; torrent=file';
+                enclosure_length = sizeBytes;
+            }
 
             // 封面图
             const cover = item.find('img.image.lazy').attr('data-src')
@@ -98,7 +119,9 @@ async function handler(ctx) {
                 || '';
             const coverImg = cover ? new URL(cover, rootUrl).href : '';
 
-            // ========== 截图直链拼接逻辑（保留原样） ==========
+            // ======================
+            // 截图直链拼接逻辑（原样保留）
+            // ======================
             const screenshots = [];
             item.find('.images-description ul li a.img-items').each((i, el) => {
                 const orig = $(el).text().trim().replace(/\s+/g, '');
@@ -133,7 +156,9 @@ async function handler(ctx) {
                 screenshots
             });
 
-            // 输出给 RSSHub（Folo 100% 兼容）
+            // ======================
+            // 最终返回（Folo 100% 兼容）
+            // ======================
             return {
                 title: itemTitle,
                 link: itemLink,
@@ -142,9 +167,9 @@ async function handler(ctx) {
                 description,
                 category: tags,
 
-                enclosure_url: finalDownload || undefined,
-                enclosure_type: finalDownload ? 'application/x-bittorrent' : undefined,
-                enclosure_length: finalDownload ? getSizeInBytes(sizeStr) : undefined
+                enclosure_url,
+                enclosure_type,
+                enclosure_length
             };
         });
 
