@@ -21,6 +21,24 @@
     <div><strong>ID：</strong>{{ id }}</div>
     <div><strong>大小：</strong>{{ size }}</div>
     <div><strong>发布日期：</strong>{{ pubDate }}</div>
+
+    {{ if tags && tags.length }}
+    <div style="margin-top:6px">
+        <strong>标签：</strong>
+        {{ each tags }}
+            <span style="
+                display:inline-block;
+                background:#eef4ff;
+                color:#3367d6;
+                padding:2px 6px;
+                margin-right:4px;
+                margin-bottom:4px;
+                border-radius:3px;
+                font-size:12px;
+            ">{{ $value }}</span>
+        {{ /each }}
+    </div>
+    {{ /if }}
 </div>
 
 <!-- ===== 截图网格 ===== -->
