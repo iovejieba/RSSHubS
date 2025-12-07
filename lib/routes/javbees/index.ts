@@ -1,10 +1,12 @@
-import { Route } from '@/types';
-import got from '@/utils/got';
+import path from 'node:path';
+
 import { load } from 'cheerio';
+
+import type { Route } from '@/types';
+import { getSubPath } from '@/utils/common-utils';
+import got from '@/utils/got';
 import { parseDate } from '@/utils/parse-date';
 import { art } from '@/utils/render';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 // RFC822 日期格式化
 const toRFC822 = (date: Date) => date.toUTCString().replace('GMT', '+0000');
