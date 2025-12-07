@@ -141,16 +141,11 @@ export const route: Route = {
                 // 描述渲染
                 const __filename = fileURLToPath(import.meta.url);
                 const __dirname = path.dirname(__filename);
-                let description = art(path.join(__dirname, 'templates/description.art'), {
+                const description = art(path.join(__dirname, 'templates/description.art'), {
                     coverImage: coverImg, id: videoId, size: sizeStr.replace('GiB', 'GB'),
                     pubDate: pubDate ? toRFC822(pubDate).replace('+0000', '') : '',
                     magnet: displayMagnet, torrentLink: torrent, screenshots
                 });
-                
-                // 移除所有img标签的referrerpolicy属性（中间件会自动添加）
-                const $desc = load(description);
-                $desc('img').removeAttr('referrerpolicy');
-                description = $desc.html() || '';
 
                 // 确保enclosure_url不为空
                 const enclosureUrl = magnet ? magnet : torrent;
@@ -174,13 +169,41 @@ export const route: Route = {
             })
         );
 
-        return {
+        // 创建自定义的响应对象，利用toJSON方法在中间件处理完成后再次移除referrerpolicy属性
+        const response = {
             title: `JavBee - ${type}`,
             link: currentUrl,
             description: 'JavBee BT 订阅源',
             language: 'zh-CN',
             lastBuildDate: toRFC822(new Date()),
-            item: items
+            item: items,
+            
+            // 自定义toJSON方法，在中间件处理完成后自动调用
+            toJSON() {
+                // 处理所有item的description
+                const processedItems = this.item.map(item => {
+                    if (item.description) {
+                        const $desc = load(item.description);
+                        $desc('img').removeAttr('referrerpolicy');
+                        return {
+                            ...item,
+                            description: $desc.html() || '',
+                            content: {
+                                ...item.content,
+                                html: $desc.html() || ''
+                            }
+                        };
+                    }
+                    return item;
+                });
+                
+                return {
+                    ...this,
+                    item: processedItems
+                };
+            }
         };
+
+        return response;
     }
 };
