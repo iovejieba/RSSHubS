@@ -1,8 +1,13 @@
-import { Route } from '@/types';
-import got from '@/utils/got';
+import path from 'node:path';
+
 import { load } from 'cheerio';
+
+import type { Route } from '@/types';
+import { getSubPath } from '@/utils/common-utils';
+import got from '@/utils/got';
 import { parseDate } from '@/utils/parse-date';
 import { art } from '@/utils/render';
+<<<<<<< HEAD
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pLimit from 'p-limit'; // 用于限制并发请求数
@@ -12,6 +17,8 @@ const concurrencyLimit = pLimit(3);
 
 // 配置开关：是否使用旧的URL拼凑规则（false=使用新的图床爬取逻辑，true=回退到旧逻辑）
 const USE_OLD_PATCH_RULE = false;
+=======
+>>>>>>> 4e78a14d818670a67123398298d844d8766e2597
 
 // RFC822 日期格式化
 const toRFC822 = (date: Date) => date.toUTCString().replace('GMT', '+0000');
